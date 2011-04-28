@@ -22,7 +22,7 @@ void init_cl(cl::Context& context,
     }
     cl_context_properties properties[] =
         { CL_CONTEXT_PLATFORM, (cl_context_properties)(platforms[0])(), 0 };
-    context = cl::Context(CL_DEVICE_TYPE_CPU, properties);
+    context = cl::Context(CL_DEVICE_TYPE_GPU, properties);
     devices = std::vector<cl::Device>(context.getInfo<CL_CONTEXT_DEVICES>());
 
     queue = cl::CommandQueue(context, devices[0], 0, &err);
@@ -51,12 +51,19 @@ std::string helloStr = R"(
 
 __kernel void hello(__read_only image2d_t in,
                     __write_only image2d_t out) {
-  const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_LINEAR | CLK_ADDRESS_REPEAT;
+  const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE |
+                            CLK_FILTER_NEAREST |
+                            CLK_ADDRESS_CLAMP;
 
-  int x = get_global_id(0);
-  int y = get_global_id(1);
-  uint4 pixel = read_imageui(in, sampler, (int2)(x, y));
-  write_imageui(out, (int2)(x, y), pixel);
+  int gid0 = get_global_id(0);
+  int gid1 = get_global_id(1);
+  uint4 pixel;
+  pixel = read_imageui(in, sampler, (int2)(gid0, gid1));
+  write_imageui(out, (int2)(gid0, gid1), (uint4)(0));
+
+  // write_imageui(out, (int2)(x, y), (uint4)(0, 0, 0, 0));
+  // uint4 pixel = read_imageui(in, sampler, (int2)(x, y));
+  // write_imageui(out, (int2)(x, y), pixel);
 
   // if (y < 150) {
   //   write_imageui(out, (int2)(x, y), (uint4)(255,255,0,255));
@@ -108,19 +115,19 @@ int main() {
   region.push_back(image.rows);
   region.push_back(image.cols);
   region.push_back(1);
-  unsigned char test[300*300*4];
-  for (int i = 0; i < 300*300*4; ++i) {
-    test[i] = -1;
-    // if (i % 4 == 2) {
-    //   test[i] = 255;
-    // }
-  }
+  // unsigned char test[300*300*4];
+  // for (int i = 0; i < 300*300*4; ++i) {
+  //   test[i] = -1;
+  //   // if (i % 4 == 2) {
+  //   //   test[i] = 255;
+  //   // }
+  // }
   queue.enqueueWriteImage(cl_img_i, CL_TRUE,
                           origin, region, 0, 0,
-                          test);
-  queue.enqueueWriteImage(cl_img_i, CL_TRUE,
+                          with_alpha.data);
+  queue.enqueueWriteImage(cl_img_o, CL_TRUE,
                           origin, region, 0, 0,
-                          test);
+                          with_alpha.data);
 
   cl::Kernel kernel(program, "hello", &err);
   kernel.setArg<cl::Image2D>(0, cl_img_i);
@@ -136,12 +143,13 @@ int main() {
       &event);
   event.wait();
 
+  cv::Mat out_mat(image.size(), CV_8UC4);
   queue.enqueueReadImage(cl_img_o, CL_TRUE,
                          origin, region, 0, 0,
-                         with_alpha.data);
+                         out_mat.data);
 
   // Write result image
-  cv::imwrite("1.png", with_alpha);
+  cv::imwrite("1.png", out_mat);
 
   return EXIT_SUCCESS;
 }
