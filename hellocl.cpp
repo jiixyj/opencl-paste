@@ -49,9 +49,11 @@ void init_cl(cl::Context& context,
     if (!load_binary) {
       std::vector<size_t> sizes = program.getInfo<CL_PROGRAM_BINARY_SIZES>();
       std::vector<char*> bins = program.getInfo<CL_PROGRAM_BINARIES>(NULL);
-      std::ofstream out("hellocl_kernels.so");
-      std::copy(bins[0], bins[0] + sizes[0],
-                std::ostream_iterator<char>(out));
+      if (bins.size()) {
+        std::ofstream out("hellocl_kernels.so");
+        std::copy(bins[0], bins[0] + sizes[0],
+                  std::ostream_iterator<char>(out));
+      }
     }
 
   } catch (cl::Error err) {
