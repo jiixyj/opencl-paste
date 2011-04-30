@@ -27,7 +27,8 @@ int main() {
   cl::CommandQueue queue(cp->cmdq[0]);
 
   void* clh = clopen(cp, "hellocl_kernels.cl", CLLD_NOW);
-  cl::Kernel kernel(clsym(cp, clh, "hello", CLLD_NOW));
+  cl_kernel kernel_cl = clsym(cp, clh, "hello", CLLD_NOW);
+  cl::Kernel kernel(kernel_cl);
 
   cl::Image2D cl_img_i(context, CL_MEM_READ_ONLY,
                        cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
@@ -59,9 +60,9 @@ int main() {
                              cl::NullRange,
                              NULL, &event);
   event.wait();
-  kernel.setArg<cl_int>(2, 1);
   queue.enqueueCopyImage(cl_img_o, cl_img_i, origin, origin, region, NULL, &event);
   event.wait();
+  kernel.setArg<cl_int>(2, 1);
   queue.enqueueNDRangeKernel(kernel,
                              cl::NullRange,
                              cl::NDRange(image.rows, image.cols),
