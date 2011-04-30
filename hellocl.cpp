@@ -4,6 +4,7 @@
 #include <array>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 
 #include <cv.h>
 #include <highgui.h>
@@ -11,7 +12,8 @@
 void init_cl(cl::Context& context,
              cl::Program& program,
              cl::CommandQueue& queue,
-             std::string const& src) {
+             std::string const& src,
+             bool load_binary) {
   cl_int err = CL_SUCCESS;
   std::vector<cl::Device> devices;
   try {
@@ -28,14 +30,30 @@ void init_cl(cl::Context& context,
 
     queue = cl::CommandQueue(context, devices[0], 0, &err);
 
-    cl::Program::Sources source {
-      std::make_pair(src.c_str(), src.size())
-    };
-    program = cl::Program(context, source);
+    if (load_binary) {
+      cl::Program::Binaries bins {
+        std::make_pair(src.c_str(), src.size())
+      };
+      program = cl::Program(context, devices, bins);
+    } else {
+      cl::Program::Sources source {
+        std::make_pair(src.c_str(), src.size())
+      };
+      program = cl::Program(context, source);
+    }
     program.build(devices);
     std::string log;
     program.getBuildInfo<std::string>(devices[0], CL_PROGRAM_BUILD_LOG, &log);
     std::cerr << log;
+
+    if (!load_binary) {
+      std::vector<size_t> sizes = program.getInfo<CL_PROGRAM_BINARY_SIZES>();
+      std::vector<char*> bins = program.getInfo<CL_PROGRAM_BINARIES>(NULL);
+      std::ofstream out("hellocl_kernels.so");
+      std::copy(bins[0], bins[0] + sizes[0],
+                std::ostream_iterator<char>(out));
+    }
+
   } catch (cl::Error err) {
     std::cerr << "ERROR: "
               << err.what()
@@ -61,14 +79,19 @@ int main() {
   cv::Mat image = cv::imread("RGB.png");
   cv::Mat with_alpha = make_rgba(image);
 
-  std::ifstream ifs("hellocl_kernels.cl");
+  bool load_binary = true;
+  std::ifstream ifs("hellocl_kernels.so");
+  if (!ifs) {
+    load_binary = false;
+    ifs.open("hellocl_kernels.cl");
+  }
   std::string hellocl_kernels((std::istreambuf_iterator<char>(ifs)),
                                std::istreambuf_iterator<char>());
 
   cl::Context context;
   cl::Program program;
   cl::CommandQueue queue;
-  init_cl(context, program, queue, hellocl_kernels);
+  init_cl(context, program, queue, hellocl_kernels, load_binary);
 
 
   cl::Image2D cl_img_i(context, CL_MEM_READ_ONLY,
