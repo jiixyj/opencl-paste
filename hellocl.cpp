@@ -47,7 +47,9 @@ void init_cl(cl::Context& context,
   }
 }
 
-std::string helloStr = R"(
+#define STRINGIFY(a) #a
+
+std::string helloStr = STRINGIFY(
 
 // #pragma OPENCL EXTENSION cl_amd_printf : enable
 
@@ -70,7 +72,7 @@ __kernel void hello(__read_only image2d_t in,
   write_imageui(out, (int2)(coord.x, coord.y), pixel);
 }
 
-)";
+);
 
 cv::Mat add_alpha_channel(const cv::Mat& image) {
   static int fromto[] = {0, 0,  1, 1,  2, 2,  3, 3};
