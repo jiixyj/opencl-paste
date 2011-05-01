@@ -1,6 +1,7 @@
 project(OpenCL CXX)
 cmake_minimum_required(VERSION 2.8.0)
 set(CMAKE_MODULE_PATH ${OpenCL_SOURCE_DIR}/cmake)
+include_directories(SYSTEM include)
 
 ##### OpenCV
 find_package(OpenCV REQUIRED)

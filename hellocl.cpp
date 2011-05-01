@@ -25,7 +25,12 @@ void init_cl(cl::Context& context,
     }
     cl_context_properties properties[] =
         { CL_CONTEXT_PLATFORM, (cl_context_properties)(platforms[0])(), 0 };
-    context = cl::Context(CL_DEVICE_TYPE_CPU, properties);
+    try {
+      context = cl::Context(CL_DEVICE_TYPE_GPU, properties);
+    } catch (cl::Error err) {
+      context = cl::Context(CL_DEVICE_TYPE_CPU, properties);
+    }
+
     devices = std::vector<cl::Device>(context.getInfo<CL_CONTEXT_DEVICES>());
 
     queue = cl::CommandQueue(context, devices[0], 0, &err);
