@@ -47,11 +47,12 @@ void init_cl(cl::Context& context,
       program = cl::Program(context, source);
     }
     program.build(devices);
-    std::string log;
-    program.getBuildInfo<std::string>(devices[0], CL_PROGRAM_BUILD_LOG, &log);
-    std::cerr << log;
 
     if (!load_binary) {
+      std::string log;
+      program.getBuildInfo<std::string>(devices[0], CL_PROGRAM_BUILD_LOG, &log);
+      std::cerr << log;
+
       std::vector<size_t> sizes = program.getInfo<CL_PROGRAM_BINARY_SIZES>();
       std::vector<char*> bins = program.getInfo<CL_PROGRAM_BINARIES>(NULL);
       if (bins.size()) {
