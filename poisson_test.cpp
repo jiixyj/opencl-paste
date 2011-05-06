@@ -164,7 +164,8 @@ int main(int argc, char* argv[]) {
     cl::Event event;
     queue.enqueueNDRangeKernel(kernel,
                                cl::NullRange,
-                               cl::NDRange(global_size_x, global_size_y),
+                               cl::NDRange(size_t(source.cols),
+                                           size_t(source.rows)),
                                cl::NullRange,
                                NULL, &event);
     event.wait();
