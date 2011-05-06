@@ -87,27 +87,26 @@ cl::Program load_program(const cl::Context& context,
   return program;
 }
 
-cv::Mat make_rgba(const cv::Mat& image) {
+cv::Mat make_rgba(const cv::Mat& image, cv::Mat alpha = cv::Mat()) {
+  if (alpha.empty()) {
+    alpha = cv::Mat(cv::Mat::ones(image.size(), CV_8U) * 255);
+  }
   static int fromto[] = {0, 2,  1, 1,  2, 0,  3, 3};
   cv::Mat with_alpha(image.size(), CV_8UC4);
-  cv::Mat images[] = {image, cv::Mat(cv::Mat::ones(image.size(), CV_8U) * 255)};
+  cv::Mat images[] = {image, alpha};
   cv::mixChannels(images, 2, &with_alpha, 1, fromto, 4);
   return with_alpha;
 }
 
 int main(int argc, char* argv[]) {
-#if 0
   if (argc != 4) {
     std::cerr << "syntax: <exe> source.png mask.png target.png" << std::endl;
     return 1;
   }
-  cv::Mat source = make_rgba(cv::imread(argv[1]));
   cv::Mat mask = cv::imread(argv[2], 0);
+  cv::Mat source = make_rgba(cv::imread(argv[1]), mask);
   cv::Mat target = make_rgba(cv::imread(argv[3]));
-  return 0;
-#endif
   // Load image
-  cv::Mat image = make_rgba(cv::imread("RGB.png"));
 
   cl::Context context;
   cl::CommandQueue queue;
@@ -115,53 +114,82 @@ int main(int argc, char* argv[]) {
 
   cl::Program program = load_program(context, "hellocl_kernels");
 
-
-  cl::Image2D cl_img_i(context, CL_MEM_READ_WRITE,
-                       cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
-                       size_t(image.rows), size_t(image.cols));
-  cl::Image2D cl_img_o(context, CL_MEM_READ_WRITE,
-                       cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
-                       size_t(image.rows), size_t(image.cols));
+  size_t nr_pixels = size_t(source.rows) * size_t(source.cols);
+  cl::Buffer cl_a(context, CL_MEM_READ_WRITE, nr_pixels * sizeof(cl_uchar));
+  // queue.enqueueWriteBuffer(cl_a, CL_TRUE, 0,
+  //                          SIZE * sizeof(float), &in[0]);
+  cl::Image2D cl_source(context, CL_MEM_READ_ONLY,
+                        cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
+                        size_t(source.cols), size_t(source.rows));
+  cl::Image2D cl_target(context, CL_MEM_READ_ONLY,
+                        cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
+                        size_t(target.cols), size_t(target.rows));
+  cl::Image2D cl_b(context, CL_MEM_READ_WRITE,
+                   cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                   size_t(source.cols), size_t(source.rows));
 
   cl::size_t<3> origin;
   origin.push_back(0);
   origin.push_back(0);
   origin.push_back(0);
-  cl::size_t<3> region;
-  region.push_back(size_t(image.rows));
-  region.push_back(size_t(image.cols));
-  region.push_back(1);
-  queue.enqueueWriteImage(cl_img_i, CL_FALSE,
-                          origin, region, 0, 0,
-                          image.data);
+  cl::size_t<3> region_source;
+  region_source.push_back(size_t(source.cols));
+  region_source.push_back(size_t(source.rows));
+  region_source.push_back(1);
+  cl::size_t<3> region_target;
+  region_target.push_back(size_t(target.cols));
+  region_target.push_back(size_t(target.rows));
+  region_target.push_back(1);
+  queue.enqueueWriteImage(cl_source, CL_FALSE,
+                          origin, region_source, 0, 0,
+                          source.data);
+  queue.enqueueWriteImage(cl_target, CL_FALSE,
+                          origin, region_target, 0, 0,
+                          target.data);
 
-  cl::Kernel kernel(program, "hello", NULL);
-  kernel.setArg<cl::Image2D>(0, cl_img_i);
-  kernel.setArg<cl::Image2D>(1, cl_img_o);
-  kernel.setArg<cl_int>(2, 0);
+  cl::Kernel kernel(program, "setup_system", NULL);
+  kernel.setArg<cl::Image2D>(0, cl_source);
+  kernel.setArg<cl::Image2D>(1, cl_target);
+  kernel.setArg<cl::Buffer>(2, cl_a);
+  kernel.setArg<cl::Image2D>(3, cl_b);
 
-  queue.enqueueNDRangeKernel(kernel,
-                             cl::NullRange,
-                             cl::NDRange(size_t(image.rows), size_t(image.cols)),
-                             cl::NullRange,
-                             NULL, NULL);
-  kernel.setArg<cl::Image2D>(0, cl_img_o);
-  kernel.setArg<cl::Image2D>(1, cl_img_i);
-  kernel.setArg<cl_int>(2, 1);
   cl::Event event;
   queue.enqueueNDRangeKernel(kernel,
                              cl::NullRange,
-                             cl::NDRange(size_t(image.rows), size_t(image.cols)),
+                             cl::NDRange(size_t(source.cols),
+                                         size_t(source.rows)),
                              cl::NullRange,
                              NULL, &event);
   event.wait();
+  // kernel.setArg<cl::Image2D>(0, cl_img_o);
+  // kernel.setArg<cl::Image2D>(1, cl_img_i);
+  // kernel.setArg<cl_int>(2, 1);
+  // cl::Event event;
+  // queue.enqueueNDRangeKernel(kernel,
+  //                            cl::NullRange,
+  //                            cl::NDRange(size_t(image.rows), size_t(image.cols)),
+  //                            cl::NullRange,
+  //                            NULL, &event);
+  // event.wait();
 
-  cv::Mat out_mat(image.size(), CV_8UC4);
-  queue.enqueueReadImage(cl_img_i, CL_TRUE,
-                         origin, region, 0, 0,
+  // cv::Mat out_mat(image.size(), CV_8UC4);
+  // queue.enqueueReadImage(cl_img_i, CL_TRUE,
+  //                        origin, region, 0, 0,
+  //                        out_mat.data);
+  // {
+  //   cv::Mat tmp(image.size(), CV_8UC4);
+  //   static int fromto[] = {0, 2,  1, 1,  2, 0,  3, 3};
+  //   cv::mixChannels(&out_mat, 1, &tmp, 1, fromto, 4);
+  //   out_mat = tmp;
+  // }
+  // // Write result image
+  // cv::imwrite("1.png", out_mat);
+  cv::Mat out_mat(source.size(), CV_32FC4);
+  queue.enqueueReadImage(cl_b, CL_TRUE,
+                         origin, region_source, 0, 0,
                          out_mat.data);
   {
-    cv::Mat tmp(image.size(), CV_8UC4);
+    cv::Mat tmp(source.size(), CV_32FC4);
     static int fromto[] = {0, 2,  1, 1,  2, 0,  3, 3};
     cv::mixChannels(&out_mat, 1, &tmp, 1, fromto, 4);
     out_mat = tmp;
