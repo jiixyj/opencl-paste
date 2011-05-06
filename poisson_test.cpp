@@ -9,7 +9,6 @@
 
 void init_cl(cl::Context& context,
              cl::CommandQueue& queue) {
-  cl_int err = CL_SUCCESS;
   try {
     std::vector<cl::Platform> platforms;
     cl::Platform::get(&platforms);
@@ -25,7 +24,7 @@ void init_cl(cl::Context& context,
       context = cl::Context(CL_DEVICE_TYPE_CPU, properties);
     }
     std::vector<cl::Device> devices(context.getInfo<CL_CONTEXT_DEVICES>());
-    queue = cl::CommandQueue(context, devices[0], 0, &err);
+    queue = cl::CommandQueue(context, devices[0], CL_QUEUE_PROFILING_ENABLE);
   } catch (cl::Error error) {
     std::cerr << "ERROR: "
               << error.what()
@@ -170,6 +169,12 @@ int main(int argc, char* argv[]) {
                              cl::NullRange,
                              NULL, &event);
   event.wait();
+  {
+    cl_ulong start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+    cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
+    double time = 1.e-9 * double(end - start);
+    std::cout << "Time for kernel to execute " << time << std::endl;
+  }
   // kernel.setArg<cl::Image2D>(0, cl_img_o);
   // kernel.setArg<cl::Image2D>(1, cl_img_i);
   // kernel.setArg<cl_int>(2, 1);
