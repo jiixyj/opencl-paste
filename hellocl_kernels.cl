@@ -8,6 +8,9 @@ const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE |
                           CLK_FILTER_NEAREST |
                           CLK_ADDRESS_CLAMP_TO_EDGE;
 
+#define BLOCKSIZE_X 24
+#define BLOCKSIZE_Y 16
+
 kernel void setup_system(read_only image2d_t source,
                          read_only image2d_t target,
                          write_only global uchar* a,
@@ -22,18 +25,25 @@ kernel void setup_system(read_only image2d_t source,
 
 
   // Cache images in local memory
-  local uint4 source_cache[16 + 2][16 + 2];
+  local uint4 source_cache[BLOCKSIZE_X + 2][BLOCKSIZE_Y + 2];
   // local uint4 target_cache[16 + 2][16 + 2];
   int2 coord_local = (int2)(get_local_id(0), get_local_id(1));
-  source_cache[coord_local.x + 1][coord_local.y + 1] = read_imageui(source, sampler, coord);
-  if (coord_local.x == 0)
-    source_cache[0][coord_local.y + 1] = read_imageui(source, sampler, coord + (int2)(-1, 0));
-  else if (coord_local.x == 15)
-    source_cache[17][coord_local.y + 1] = read_imageui(source, sampler, coord + (int2)(1, 0));
-  if (coord_local.y == 0)
-    source_cache[coord_local.x + 1][0] = read_imageui(source, sampler, coord + (int2)(0, -1));
-  else if (coord_local.y == 15)
-    source_cache[coord_local.x + 1][17] = read_imageui(source, sampler, coord + (int2)(0, 1));
+  source_cache[coord_local.x + 1][coord_local.y + 1] =
+                           read_imageui(source, sampler, coord);
+  if (coord_local.x == 0) {
+    source_cache[0][coord_local.y + 1] =
+                           read_imageui(source, sampler, coord + (int2)(-1, 0));
+  } else if (coord_local.x == BLOCKSIZE_X - 1) {
+    source_cache[BLOCKSIZE_X + 1][coord_local.y + 1] =
+                           read_imageui(source, sampler, coord + (int2)(1, 0));
+  }
+  if (coord_local.y == 0) {
+    source_cache[coord_local.x + 1][0] =
+                           read_imageui(source, sampler, coord + (int2)(0, -1));
+  } else if (coord_local.y == BLOCKSIZE_Y - 1) {
+    source_cache[coord_local.x + 1][BLOCKSIZE_Y + 1] =
+                           read_imageui(source, sampler, coord + (int2)(0, 1));
+  }
 
   barrier(CLK_LOCAL_MEM_FENCE);
 
