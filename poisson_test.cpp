@@ -161,21 +161,11 @@ int main(int argc, char* argv[]) {
     kernel.setArg<cl::Image2D>(3, cl_b);
     kernel.setArg<cl::Image2D>(4, cl_x1);
 
-    size_t local_size_x = 16;
-    size_t local_size_y = 16;
-    size_t global_size_x = size_t(source.cols);
-    if (global_size_x % local_size_x) {
-      global_size_x = (global_size_x / local_size_x + 1) * local_size_x;
-    }
-    size_t global_size_y = size_t(source.rows);
-    if (global_size_y % local_size_y) {
-      global_size_y = (global_size_y / local_size_y + 1) * local_size_x;
-    }
     cl::Event event;
     queue.enqueueNDRangeKernel(kernel,
                                cl::NullRange,
                                cl::NDRange(global_size_x, global_size_y),
-                               cl::NDRange(local_size_x, local_size_y),
+                               cl::NullRange,
                                NULL, &event);
     event.wait();
     {
