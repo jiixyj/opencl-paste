@@ -27,4 +27,4 @@ add_custom_target(hellocl_kernels ALL ${CMAKE_COMMAND} -E copy
     ${OpenCL_BINARY_DIR}/hellocl_kernels.cl)
 
 add_executable(poisson poisson_test)
-target_link_libraries(poisson ${OpenCV_LIBS})
+target_link_libraries(poisson ${OPENCL_LIBRARIES} ${OpenCV_LIBS})
