@@ -24,10 +24,10 @@ void init_cl(cl::Context& context,
       exit(EXIT_FAILURE);
     }
     cl_context_properties properties[] =
-        { CL_CONTEXT_PLATFORM, (cl_context_properties)(platforms[0])(), 0 };
+        { CL_CONTEXT_PLATFORM, cl_context_properties((platforms[0])()), 0 };
     try {
       context = cl::Context(CL_DEVICE_TYPE_GPU, properties);
-    } catch (cl::Error err) {
+    } catch (cl::Error) {
       context = cl::Context(CL_DEVICE_TYPE_CPU, properties);
     }
 
@@ -62,10 +62,10 @@ void init_cl(cl::Context& context,
       }
     }
 
-  } catch (cl::Error err) {
+  } catch (cl::Error error) {
     std::cerr << "ERROR: "
-              << err.what()
-              << "(" << err.err() << ")"
+              << error.what()
+              << "(" << error.err() << ")"
               << std::endl;
     std::string log;
     program.getBuildInfo<std::string>(devices[0], CL_PROGRAM_BUILD_LOG, &log);
@@ -77,7 +77,7 @@ void init_cl(cl::Context& context,
 cv::Mat make_rgba(const cv::Mat& image) {
   static int fromto[] = {0, 2,  1, 1,  2, 0,  3, 3};
   cv::Mat with_alpha(image.size(), CV_8UC4);
-  cv::Mat images[] = {image, cv::Mat::ones(image.size(), CV_8U) * 255};
+  cv::Mat images[] = {image, cv::Mat(cv::Mat::ones(image.size(), CV_8U) * 255)};
   cv::mixChannels(images, 2, &with_alpha, 1, fromto, 4);
   return with_alpha;
 }
@@ -104,18 +104,18 @@ int main() {
 
   cl::Image2D cl_img_i(context, CL_MEM_READ_ONLY,
                        cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
-                       image.rows, image.cols);
+                       size_t(image.rows), size_t(image.cols));
   cl::Image2D cl_img_o(context, CL_MEM_WRITE_ONLY,
                        cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
-                       image.rows, image.cols);
+                       size_t(image.rows), size_t(image.cols));
 
   cl::size_t<3> origin;
   origin.push_back(0);
   origin.push_back(0);
   origin.push_back(0);
   cl::size_t<3> region;
-  region.push_back(image.rows);
-  region.push_back(image.cols);
+  region.push_back(size_t(image.rows));
+  region.push_back(size_t(image.cols));
   region.push_back(1);
   queue.enqueueWriteImage(cl_img_i, CL_TRUE,
                           origin, region, 0, 0,
@@ -129,7 +129,7 @@ int main() {
   cl::Event event;
   queue.enqueueNDRangeKernel(kernel,
                              cl::NullRange,
-                             cl::NDRange(image.rows, image.cols),
+                             cl::NDRange(size_t(image.rows), size_t(image.cols)),
                              cl::NullRange,
                              NULL, &event);
   event.wait();
@@ -138,7 +138,7 @@ int main() {
   kernel.setArg<cl_int>(2, 1);
   queue.enqueueNDRangeKernel(kernel,
                              cl::NullRange,
-                             cl::NDRange(image.rows, image.cols),
+                             cl::NDRange(size_t(image.rows), size_t(image.cols)),
                              cl::NullRange,
                              NULL, &event);
   event.wait();
