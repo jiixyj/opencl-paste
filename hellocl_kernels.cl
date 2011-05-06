@@ -14,10 +14,6 @@ kernel void setup_system(read_only image2d_t source,
                          write_only image2d_t b,
                          write_only image2d_t x) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
-  int2 source_size = get_image_dim(source);
-  if (coord.x >= source_size.x || coord.y >= source_size.y) {
-    return;
-  }
   size_t size_x = get_global_size(0);
 
   uint4 pixel = read_imageui(source, sampler, coord);
@@ -55,45 +51,47 @@ kernel void setup_system(read_only image2d_t source,
     }
     a[coord.y * size_x + coord.x] = a_val;
 
-    pixel = (uint4)(0);
+    uint4 laplace = (uint4)(0);
     if (!u_o && u_s) {
-      pixel += target_u;
+      laplace += target_u;
     }
     if (!l_o && l_s) {
-      pixel += target_l;
+      laplace += target_l;
     }
     if (!d_o && d_s) {
-      pixel += target_d;
+      laplace += target_d;
     }
     if (!r_o && r_s) {
-      pixel += target_r;
+      laplace += target_r;
     }
     if (u_s) {
-      pixel -= source_u;
-      pixel += source_m;
+      laplace -= source_u;
+      laplace += source_m;
     }
     if (l_s) {
-      pixel -= source_l;
-      pixel += source_m;
+      laplace -= source_l;
+      laplace += source_m;
     }
     if (d_s) {
-      pixel -= source_d;
-      pixel += source_m;
+      laplace -= source_d;
+      laplace += source_m;
     }
     if (r_s) {
-      pixel -= source_r;
-      pixel += source_m;
+      laplace -= source_r;
+      laplace += source_m;
     }
 
-    pixel.w = 255;
-    write_imagef(b, coord, convert_float4(pixel));
+    laplace.w = 255;
+    write_imagef(b, coord, convert_float4(laplace));
+    write_imagef(x, coord, convert_float4(pixel));
 
   } else {
     a[coord.y * size_x + coord.x] = 1;
     uint4 tmp = read_imageui(target, sampler, coord);
     tmp.w = 255;
-    write_imagef(b, coord, convert_float4(tmp));
-    // write_imagef(b, coord, (float4)(0.0f));
+    float4 tmpf = convert_float4(tmp);
+    write_imagef(b, coord, tmpf);
+    write_imagef(x, coord, tmpf);
   }
 }
 
