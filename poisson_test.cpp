@@ -127,6 +127,12 @@ int main(int argc, char* argv[]) {
   cl::Image2D cl_b(context, CL_MEM_READ_WRITE,
                    cl::ImageFormat(CL_RGBA, CL_FLOAT),
                    size_t(source.cols), size_t(source.rows));
+  cl::Image2D cl_x1(context, CL_MEM_READ_WRITE,
+                    cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                    size_t(source.cols), size_t(source.rows));
+  cl::Image2D cl_x2(context, CL_MEM_READ_WRITE,
+                    cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                    size_t(source.cols), size_t(source.rows));
 
   cl::size_t<3> origin;
   origin.push_back(0);
@@ -147,43 +153,43 @@ int main(int argc, char* argv[]) {
                           origin, region_target, 0, 0,
                           target.data);
 
-  cl::Kernel kernel;
   try {
-    kernel = cl::Kernel(program, "setup_system", NULL);
+    cl::Kernel kernel(program, "setup_system", NULL);
+    kernel.setArg<cl::Image2D>(0, cl_source);
+    kernel.setArg<cl::Image2D>(1, cl_target);
+    kernel.setArg<cl::Buffer>(2, cl_a);
+    kernel.setArg<cl::Image2D>(3, cl_b);
+    kernel.setArg<cl::Image2D>(4, cl_x1);
+
+    size_t local_size_x = 16;
+    size_t local_size_y = 16;
+    size_t global_size_x = size_t(source.cols);
+    if (global_size_x % local_size_x) {
+      global_size_x = (global_size_x / local_size_x + 1) * local_size_x;
+    }
+    size_t global_size_y = size_t(source.rows);
+    if (global_size_y % local_size_y) {
+      global_size_y = (global_size_y / local_size_y + 1) * local_size_x;
+    }
+    cl::Event event;
+    queue.enqueueNDRangeKernel(kernel,
+                               cl::NullRange,
+                               cl::NDRange(global_size_x, global_size_y),
+                               cl::NDRange(local_size_x, local_size_y),
+                               NULL, &event);
+    event.wait();
+    {
+      cl_ulong start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+      cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
+      double time = 1.e-9 * double(end - start);
+      std::cerr << "Time for kernel to execute " << time << std::endl;
+    }
   } catch (cl::Error error) {
     std::cerr << "ERROR: "
               << error.what()
               << "(" << error.err() << ")"
               << std::endl;
     return EXIT_FAILURE;
-  }
-  kernel.setArg<cl::Image2D>(0, cl_source);
-  kernel.setArg<cl::Image2D>(1, cl_target);
-  kernel.setArg<cl::Buffer>(2, cl_a);
-  kernel.setArg<cl::Image2D>(3, cl_b);
-
-  size_t local_size_x = 16;
-  size_t local_size_y = 16;
-  size_t global_size_x = size_t(source.cols);
-  if (global_size_x % local_size_x) {
-    global_size_x = (global_size_x / local_size_x + 1) * local_size_x;
-  }
-  size_t global_size_y = size_t(source.rows);
-  if (global_size_y % local_size_y) {
-    global_size_y = (global_size_y / local_size_y + 1) * local_size_x;
-  }
-  cl::Event event;
-  queue.enqueueNDRangeKernel(kernel,
-                             cl::NullRange,
-                             cl::NDRange(global_size_x, global_size_y),
-                             cl::NDRange(local_size_x, local_size_y),
-                             NULL, &event);
-  event.wait();
-  {
-    cl_ulong start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
-    cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
-    double time = 1.e-9 * double(end - start);
-    std::cerr << "Time for kernel to execute " << time << std::endl;
   }
   // kernel.setArg<cl::Image2D>(0, cl_img_o);
   // kernel.setArg<cl::Image2D>(1, cl_img_i);
