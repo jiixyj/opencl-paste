@@ -8,9 +8,6 @@ const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE |
                           CLK_FILTER_NEAREST |
                           CLK_ADDRESS_CLAMP_TO_EDGE;
 
-#define BLOCKSIZE_X 16
-#define BLOCKSIZE_Y 16
-
 kernel void setup_system(read_only image2d_t source,
                          read_only image2d_t target,
                          write_only global uchar* a,
@@ -19,67 +16,25 @@ kernel void setup_system(read_only image2d_t source,
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
   int2 source_size = get_image_dim(source);
   if (coord.x >= source_size.x || coord.y >= source_size.y) {
-    barrier(CLK_LOCAL_MEM_FENCE);
     return;
   }
   size_t size_x = get_global_size(0);
 
-
-  int2 coord_local = (int2)(get_local_id(0), get_local_id(1));
-  local uint4 source_cache[BLOCKSIZE_X + 2][BLOCKSIZE_Y + 2];
-  source_cache[coord_local.x + 1][coord_local.y + 1] =
-                             read_imageui(source, sampler, coord);
-  local uint4 target_cache[BLOCKSIZE_X + 2][BLOCKSIZE_Y + 2];
-  target_cache[coord_local.x + 1][coord_local.y + 1] =
-                             read_imageui(target, sampler, coord);
-
-  uint4 pixel = source_cache[coord_local.x + 1][coord_local.y + 1];
+  uint4 pixel = read_imageui(source, sampler, coord);
   if (pixel.w) {
-    // Cache images in local memory
-    if (coord_local.x == 0) {
-      source_cache[0][coord_local.y + 1] =
-                             read_imageui(source, sampler, coord + (int2)(-1, 0));
-    } else if (coord_local.x == BLOCKSIZE_X - 1) {
-      source_cache[BLOCKSIZE_X + 1][coord_local.y + 1] =
-                             read_imageui(source, sampler, coord + (int2)(1, 0));
-    }
-    if (coord_local.y == 0) {
-      source_cache[coord_local.x + 1][0] =
-                             read_imageui(source, sampler, coord + (int2)(0, -1));
-    } else if (coord_local.y == BLOCKSIZE_Y - 1) {
-      source_cache[coord_local.x + 1][BLOCKSIZE_Y + 1] =
-                             read_imageui(source, sampler, coord + (int2)(0, 1));
-    }
-    if (coord_local.x == 0) {
-      target_cache[0][coord_local.y + 1] =
-                             read_imageui(target, sampler, coord + (int2)(-1, 0));
-    } else if (coord_local.x == BLOCKSIZE_X - 1) {
-      target_cache[BLOCKSIZE_X + 1][coord_local.y + 1] =
-                             read_imageui(target, sampler, coord + (int2)(1, 0));
-    }
-    if (coord_local.y == 0) {
-      target_cache[coord_local.x + 1][0] =
-                             read_imageui(target, sampler, coord + (int2)(0, -1));
-    } else if (coord_local.y == BLOCKSIZE_Y - 1) {
-      target_cache[coord_local.x + 1][BLOCKSIZE_Y + 1] =
-                             read_imageui(target, sampler, coord + (int2)(0, 1));
-    }
-
-    barrier(CLK_LOCAL_MEM_FENCE);
-
-    uint4 source_m = source_cache[coord_local.x + 1][coord_local.y + 1];
-    uint4 source_u = source_cache[coord_local.x + 1][coord_local.y];
-    uint4 source_l = source_cache[coord_local.x][coord_local.y + 1];
-    uint4 source_d = source_cache[coord_local.x + 1][coord_local.y + 2];
-    uint4 source_r = source_cache[coord_local.x + 2][coord_local.y + 1];
+    uint4 source_m = read_imageui(source, sampler, coord);
+    uint4 source_u = read_imageui(source, sampler, coord + (int2)( 0, -1));
+    uint4 source_l = read_imageui(source, sampler, coord + (int2)(-1,  0));
+    uint4 source_d = read_imageui(source, sampler, coord + (int2)( 0,  1));
+    uint4 source_r = read_imageui(source, sampler, coord + (int2)( 1,  0));
     bool u_o = source_u.w;
     bool l_o = source_l.w;
     bool d_o = source_d.w;
     bool r_o = source_r.w;
-    uint4 target_u = target_cache[coord_local.x + 1][coord_local.y];
-    uint4 target_l = target_cache[coord_local.x][coord_local.y + 1];
-    uint4 target_d = target_cache[coord_local.x + 1][coord_local.y + 2];
-    uint4 target_r = target_cache[coord_local.x + 2][coord_local.y + 1];
+    uint4 target_u = read_imageui(target, sampler, coord + (int2)( 0, -1));
+    uint4 target_l = read_imageui(target, sampler, coord + (int2)(-1,  0));
+    uint4 target_d = read_imageui(target, sampler, coord + (int2)( 0,  1));
+    uint4 target_r = read_imageui(target, sampler, coord + (int2)( 1,  0));
     bool u_s = target_u.w;
     bool l_s = target_l.w;
     bool d_s = target_d.w;
@@ -135,11 +90,10 @@ kernel void setup_system(read_only image2d_t source,
 
   } else {
     a[coord.y * size_x + coord.x] = 1;
-    uint4 tmp = target_cache[coord_local.x + 1][coord_local.y + 1];
+    uint4 tmp = read_imageui(target, sampler, coord);
     tmp.w = 255;
     write_imagef(b, coord, convert_float4(tmp));
-
-    barrier(CLK_LOCAL_MEM_FENCE);
+    // write_imagef(b, coord, (float4)(0.0f));
   }
 }
 
