@@ -2,9 +2,9 @@ float sum(float4 in) {
   return dot(in, (float4)(1.0f, 1.0f, 1.0f, 1.0f));
 }
 
-constant sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE |
-                             CLK_FILTER_NEAREST |
-                             CLK_ADDRESS_CLAMP_TO_EDGE;
+const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE |
+                          CLK_FILTER_NEAREST |
+                          CLK_ADDRESS_CLAMP_TO_EDGE;
 
 kernel void setup_system(read_only image2d_t source,
                          read_only image2d_t target,

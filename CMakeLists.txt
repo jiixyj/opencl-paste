@@ -12,7 +12,7 @@ find_package(OpenCL REQUIRED)
 include_directories(SYSTEM ${OPENCL_INCLUDE_DIRS})
 
 ########## Compiler setup
-if(NOT CMAKE_BUILD_TYPE)
+if("${CMAKE_VERSION}" STRGREATER "2.7.9" AND NOT CMAKE_BUILD_TYPE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY VALUE "Release")
 endif()
 

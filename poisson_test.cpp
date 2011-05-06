@@ -147,7 +147,16 @@ int main(int argc, char* argv[]) {
                           origin, region_target, 0, 0,
                           target.data);
 
-  cl::Kernel kernel(program, "setup_system", NULL);
+  cl::Kernel kernel;
+  try {
+    kernel = cl::Kernel(program, "setup_system", NULL);
+  } catch (cl::Error error) {
+    std::cerr << "ERROR: "
+              << error.what()
+              << "(" << error.err() << ")"
+              << std::endl;
+    return EXIT_FAILURE;
+  }
   kernel.setArg<cl::Image2D>(0, cl_source);
   kernel.setArg<cl::Image2D>(1, cl_target);
   kernel.setArg<cl::Buffer>(2, cl_a);
