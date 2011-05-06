@@ -8,7 +8,7 @@ const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE |
                           CLK_FILTER_NEAREST |
                           CLK_ADDRESS_CLAMP_TO_EDGE;
 
-#define BLOCKSIZE_X 24
+#define BLOCKSIZE_X 16
 #define BLOCKSIZE_Y 16
 
 kernel void setup_system(read_only image2d_t source,
