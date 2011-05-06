@@ -26,46 +26,47 @@ kernel void setup_system(read_only image2d_t source,
 
 
   int2 coord_local = (int2)(get_local_id(0), get_local_id(1));
-  // Cache images in local memory
   local uint4 source_cache[BLOCKSIZE_X + 2][BLOCKSIZE_Y + 2];
   source_cache[coord_local.x + 1][coord_local.y + 1] =
-                           read_imageui(source, sampler, coord);
-  if (coord_local.x == 0) {
-    source_cache[0][coord_local.y + 1] =
-                           read_imageui(source, sampler, coord + (int2)(-1, 0));
-  } else if (coord_local.x == BLOCKSIZE_X - 1) {
-    source_cache[BLOCKSIZE_X + 1][coord_local.y + 1] =
-                           read_imageui(source, sampler, coord + (int2)(1, 0));
-  }
-  if (coord_local.y == 0) {
-    source_cache[coord_local.x + 1][0] =
-                           read_imageui(source, sampler, coord + (int2)(0, -1));
-  } else if (coord_local.y == BLOCKSIZE_Y - 1) {
-    source_cache[coord_local.x + 1][BLOCKSIZE_Y + 1] =
-                           read_imageui(source, sampler, coord + (int2)(0, 1));
-  }
+                             read_imageui(source, sampler, coord);
   local uint4 target_cache[BLOCKSIZE_X + 2][BLOCKSIZE_Y + 2];
   target_cache[coord_local.x + 1][coord_local.y + 1] =
-                           read_imageui(target, sampler, coord);
-  if (coord_local.x == 0) {
-    target_cache[0][coord_local.y + 1] =
-                           read_imageui(target, sampler, coord + (int2)(-1, 0));
-  } else if (coord_local.x == BLOCKSIZE_X - 1) {
-    target_cache[BLOCKSIZE_X + 1][coord_local.y + 1] =
-                           read_imageui(target, sampler, coord + (int2)(1, 0));
-  }
-  if (coord_local.y == 0) {
-    target_cache[coord_local.x + 1][0] =
-                           read_imageui(target, sampler, coord + (int2)(0, -1));
-  } else if (coord_local.y == BLOCKSIZE_Y - 1) {
-    target_cache[coord_local.x + 1][BLOCKSIZE_Y + 1] =
-                           read_imageui(target, sampler, coord + (int2)(0, 1));
-  }
-
-  barrier(CLK_LOCAL_MEM_FENCE);
+                             read_imageui(target, sampler, coord);
 
   uint4 pixel = source_cache[coord_local.x + 1][coord_local.y + 1];
   if (pixel.w) {
+    // Cache images in local memory
+    if (coord_local.x == 0) {
+      source_cache[0][coord_local.y + 1] =
+                             read_imageui(source, sampler, coord + (int2)(-1, 0));
+    } else if (coord_local.x == BLOCKSIZE_X - 1) {
+      source_cache[BLOCKSIZE_X + 1][coord_local.y + 1] =
+                             read_imageui(source, sampler, coord + (int2)(1, 0));
+    }
+    if (coord_local.y == 0) {
+      source_cache[coord_local.x + 1][0] =
+                             read_imageui(source, sampler, coord + (int2)(0, -1));
+    } else if (coord_local.y == BLOCKSIZE_Y - 1) {
+      source_cache[coord_local.x + 1][BLOCKSIZE_Y + 1] =
+                             read_imageui(source, sampler, coord + (int2)(0, 1));
+    }
+    if (coord_local.x == 0) {
+      target_cache[0][coord_local.y + 1] =
+                             read_imageui(target, sampler, coord + (int2)(-1, 0));
+    } else if (coord_local.x == BLOCKSIZE_X - 1) {
+      target_cache[BLOCKSIZE_X + 1][coord_local.y + 1] =
+                             read_imageui(target, sampler, coord + (int2)(1, 0));
+    }
+    if (coord_local.y == 0) {
+      target_cache[coord_local.x + 1][0] =
+                             read_imageui(target, sampler, coord + (int2)(0, -1));
+    } else if (coord_local.y == BLOCKSIZE_Y - 1) {
+      target_cache[coord_local.x + 1][BLOCKSIZE_Y + 1] =
+                             read_imageui(target, sampler, coord + (int2)(0, 1));
+    }
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+
     uint4 source_m = source_cache[coord_local.x + 1][coord_local.y + 1];
     uint4 source_u = source_cache[coord_local.x + 1][coord_local.y];
     uint4 source_l = source_cache[coord_local.x][coord_local.y + 1];
@@ -137,7 +138,8 @@ kernel void setup_system(read_only image2d_t source,
     uint4 tmp = target_cache[coord_local.x + 1][coord_local.y + 1];
     tmp.w = 255;
     write_imagef(b, coord, convert_float4(tmp));
-    // write_imagef(b, coord, (float4)(0.0f));
+
+    barrier(CLK_LOCAL_MEM_FENCE);
   }
 }
 
