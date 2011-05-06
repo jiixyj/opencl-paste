@@ -24,6 +24,7 @@ void init_cl(cl::Context& context,
       context = cl::Context(CL_DEVICE_TYPE_CPU, properties);
     }
     std::vector<cl::Device> devices(context.getInfo<CL_CONTEXT_DEVICES>());
+    std::cerr << devices[0].getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>() << std::endl;
     queue = cl::CommandQueue(context, devices[0], CL_QUEUE_PROFILING_ENABLE);
   } catch (cl::Error error) {
     std::cerr << "ERROR: "
@@ -161,19 +162,27 @@ int main(int argc, char* argv[]) {
   kernel.setArg<cl::Buffer>(2, cl_a);
   kernel.setArg<cl::Image2D>(3, cl_b);
 
+  size_t local_size = 16;
+  size_t global_size_x = size_t(source.cols);
+  if (global_size_x % local_size) {
+    global_size_x = (global_size_x / local_size + 1) * local_size;
+  }
+  size_t global_size_y = size_t(source.rows);
+  if (global_size_y % local_size) {
+    global_size_y = (global_size_y / local_size + 1) * local_size;
+  }
   cl::Event event;
   queue.enqueueNDRangeKernel(kernel,
                              cl::NullRange,
-                             cl::NDRange(size_t(source.cols),
-                                         size_t(source.rows)),
-                             cl::NullRange,
+                             cl::NDRange(global_size_x, global_size_y),
+                             cl::NDRange(local_size, local_size),
                              NULL, &event);
   event.wait();
   {
     cl_ulong start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
     cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
     double time = 1.e-9 * double(end - start);
-    std::cout << "Time for kernel to execute " << time << std::endl;
+    std::cerr << "Time for kernel to execute " << time << std::endl;
   }
   // kernel.setArg<cl::Image2D>(0, cl_img_o);
   // kernel.setArg<cl::Image2D>(1, cl_img_i);

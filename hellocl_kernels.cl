@@ -1,3 +1,5 @@
+// #pragma OPENCL EXTENSION cl_amd_printf : enable
+
 float sum(float4 in) {
   return dot(in, (float4)(1.0f, 1.0f, 1.0f, 1.0f));
 }
@@ -11,15 +13,37 @@ kernel void setup_system(read_only image2d_t source,
                          write_only global uchar* a,
                          write_only image2d_t b) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
+  int2 source_size = get_image_dim(source);
+  if (coord.x >= source_size.x || coord.y >= source_size.y) {
+    barrier(CLK_LOCAL_MEM_FENCE);
+    return;
+  }
   size_t size_x = get_global_size(0);
 
-  uint4 pixel = read_imageui(source, sampler, coord);
+
+  // Cache images in local memory
+  local uint4 source_cache[16 + 2][16 + 2];
+  // local uint4 target_cache[16 + 2][16 + 2];
+  int2 coord_local = (int2)(get_local_id(0), get_local_id(1));
+  source_cache[coord_local.x + 1][coord_local.y + 1] = read_imageui(source, sampler, coord);
+  if (coord_local.x == 0)
+    source_cache[0][coord_local.y + 1] = read_imageui(source, sampler, coord + (int2)(-1, 0));
+  else if (coord_local.x == 15)
+    source_cache[17][coord_local.y + 1] = read_imageui(source, sampler, coord + (int2)(1, 0));
+  if (coord_local.y == 0)
+    source_cache[coord_local.x + 1][0] = read_imageui(source, sampler, coord + (int2)(0, -1));
+  else if (coord_local.y == 15)
+    source_cache[coord_local.x + 1][17] = read_imageui(source, sampler, coord + (int2)(0, 1));
+
+  barrier(CLK_LOCAL_MEM_FENCE);
+
+  uint4 pixel = source_cache[coord_local.x + 1][coord_local.y + 1];
   if (pixel.w) {
-    uint4 source_m = read_imageui(source, sampler, coord);
-    uint4 source_u = read_imageui(source, sampler, coord + (int2)( 0, -1));
-    uint4 source_l = read_imageui(source, sampler, coord + (int2)(-1,  0));
-    uint4 source_d = read_imageui(source, sampler, coord + (int2)( 0,  1));
-    uint4 source_r = read_imageui(source, sampler, coord + (int2)( 1,  0));
+    uint4 source_m = source_cache[coord_local.x + 1][coord_local.y + 1];
+    uint4 source_u = source_cache[coord_local.x + 1][coord_local.y];
+    uint4 source_l = source_cache[coord_local.x][coord_local.y + 1];
+    uint4 source_d = source_cache[coord_local.x + 1][coord_local.y + 2];
+    uint4 source_r = source_cache[coord_local.x + 2][coord_local.y + 1];
     bool u_o = source_u.w;
     bool l_o = source_l.w;
     bool d_o = source_d.w;
