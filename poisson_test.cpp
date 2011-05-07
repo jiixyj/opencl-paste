@@ -142,16 +142,20 @@ int main(int argc, char* argv[]) {
   cl::Program program = load_program(context, "hellocl_kernels");
 
   size_t nr_pixels = size_t(source.rows) * size_t(source.cols);
-  cl::Buffer cl_a(context, CL_MEM_READ_WRITE, nr_pixels * sizeof(cl_uchar));
+  cl::Buffer cl_a_w(context, CL_MEM_WRITE_ONLY, nr_pixels * sizeof(cl_uchar));
+  cl::Buffer cl_a_r(context, CL_MEM_READ_ONLY,  nr_pixels * sizeof(cl_uchar));
   cl::Image2D cl_source(context, CL_MEM_READ_ONLY,
                         cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
                         size_t(source.cols), size_t(source.rows));
   cl::Image2D cl_target(context, CL_MEM_READ_ONLY,
                         cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
                         size_t(target.cols), size_t(target.rows));
-  cl::Image2D cl_b(context, CL_MEM_READ_WRITE,
-                   cl::ImageFormat(CL_RGBA, CL_FLOAT),
-                   size_t(source.cols), size_t(source.rows));
+  cl::Image2D cl_b_w(context, CL_MEM_WRITE_ONLY,
+                     cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                     size_t(source.cols), size_t(source.rows));
+  cl::Image2D cl_b_r(context, CL_MEM_READ_ONLY,
+                     cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                     size_t(source.cols), size_t(source.rows));
   cl::Image2D cl_x1(context, CL_MEM_READ_WRITE,
                     cl::ImageFormat(CL_RGBA, CL_FLOAT),
                     size_t(source.cols), size_t(source.rows));
@@ -184,8 +188,8 @@ int main(int argc, char* argv[]) {
     cl::Kernel kernel(program, "setup_system", NULL);
     kernel.setArg<cl::Image2D>(0, cl_source);
     kernel.setArg<cl::Image2D>(1, cl_target);
-    kernel.setArg<cl::Buffer>(2, cl_a);
-    kernel.setArg<cl::Image2D>(3, cl_b);
+    kernel.setArg<cl::Buffer> (2, cl_a_w);
+    kernel.setArg<cl::Image2D>(3, cl_b_w);
     kernel.setArg<cl::Image2D>(4, cl_x1);
 
     cl::Event event;
@@ -198,9 +202,12 @@ int main(int argc, char* argv[]) {
     event.wait();
     cl_ulong start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
 
+    queue.enqueueCopyBuffer(cl_a_w, cl_a_r, 0, 0, nr_pixels * sizeof(cl_uchar));
+    queue.enqueueCopyImage(cl_b_w, cl_b_r, origin, origin, region_source);
+
     cl::Kernel jacobi(program, "jacobi", NULL);
-    jacobi.setArg<cl::Buffer>(0, cl_a);
-    jacobi.setArg<cl::Image2D>(1, cl_b);
+    jacobi.setArg<cl::Buffer>(0, cl_a_r);
+    jacobi.setArg<cl::Image2D>(1, cl_b_r);
 
     for (int i = 0; i < 2000; ++i) {
       jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_1);
@@ -214,6 +221,7 @@ int main(int argc, char* argv[]) {
       std::swap(cl_image_ptr_1, cl_image_ptr_2);
     }
     event.wait();
+
     cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
     double time = 1.e-9 * double(end - start);
     std::cerr << "Time for kernel to execute " << time << std::endl;
@@ -225,7 +233,6 @@ int main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
 
-  save_cl_image("b.png", queue, cl_b);
   save_cl_image("x.png", queue, *cl_image_ptr_1);
 
   return EXIT_SUCCESS;
