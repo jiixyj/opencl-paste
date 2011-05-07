@@ -158,6 +158,8 @@ int main(int argc, char* argv[]) {
   cl::Image2D cl_x2(context, CL_MEM_READ_WRITE,
                     cl::ImageFormat(CL_RGBA, CL_FLOAT),
                     size_t(source.cols), size_t(source.rows));
+  cl::Image2D* cl_image_ptr_1 = &cl_x1;
+  cl::Image2D* cl_image_ptr_2 = &cl_x2;
 
   cl::size_t<3> origin;
   origin.push_back(0);
@@ -194,12 +196,27 @@ int main(int argc, char* argv[]) {
                                cl::NullRange,
                                NULL, &event);
     event.wait();
-    {
-      cl_ulong start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
-      cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
-      double time = 1.e-9 * double(end - start);
-      std::cerr << "Time for kernel to execute " << time << std::endl;
+    cl_ulong start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+
+    cl::Kernel jacobi(program, "jacobi", NULL);
+    jacobi.setArg<cl::Buffer>(0, cl_a);
+    jacobi.setArg<cl::Image2D>(1, cl_b);
+
+    for (int i = 0; i < 2000; ++i) {
+      jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_1);
+      jacobi.setArg<cl::Image2D>(3, *cl_image_ptr_2);
+      queue.enqueueNDRangeKernel(jacobi,
+                                 cl::NullRange,
+                                 cl::NDRange(size_t(source.cols),
+                                             size_t(source.rows)),
+                                 cl::NullRange,
+                                 NULL, &event);
+      std::swap(cl_image_ptr_1, cl_image_ptr_2);
     }
+    event.wait();
+    cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
+    double time = 1.e-9 * double(end - start);
+    std::cerr << "Time for kernel to execute " << time << std::endl;
   } catch (cl::Error error) {
     std::cerr << "ERROR: "
               << error.what()
@@ -209,7 +226,7 @@ int main(int argc, char* argv[]) {
   }
 
   save_cl_image("b.png", queue, cl_b);
-  save_cl_image("x.png", queue, cl_x1);
+  save_cl_image("x.png", queue, *cl_image_ptr_1);
 
   return EXIT_SUCCESS;
 }

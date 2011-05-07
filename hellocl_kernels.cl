@@ -1,4 +1,4 @@
-// #pragma OPENCL EXTENSION cl_amd_printf : enable
+#pragma OPENCL EXTENSION cl_amd_printf : enable
 
 float sum(float4 in) {
   return dot(in, (float4)(1.0f, 1.0f, 1.0f, 1.0f));
@@ -82,7 +82,8 @@ kernel void setup_system(read_only image2d_t source,
     }
 
     laplace.w = 255;
-    write_imagef(b, coord, convert_float4(laplace));
+    // is OK because OpenCL has two's complement
+    write_imagef(b, coord, convert_float4(as_int4(laplace)));
     write_imagef(x, coord, convert_float4(pixel));
 
   } else {
@@ -93,6 +94,34 @@ kernel void setup_system(read_only image2d_t source,
     write_imagef(b, coord, tmpf);
     write_imagef(x, coord, tmpf);
   }
+}
+
+kernel void jacobi(read_only global uchar* a,
+                   read_only image2d_t b,
+                   read_only image2d_t x_in,
+                   write_only image2d_t x_out) {
+  int2 coord = (int2)(get_global_id(0), get_global_id(1));
+  size_t size_x = get_global_size(0);
+
+  uchar a_val = a[coord.y * size_x + coord.x];
+  float4 sigma = (float4)(0.0f);
+  if (a_val & (1 << 7)) {
+    sigma -= read_imagef(x_in, sampler, coord + (int2)( 0, -1));
+  }
+  if (a_val & (1 << 6)) {
+    sigma -= read_imagef(x_in, sampler, coord + (int2)(-1,  0));
+  }
+  if (a_val & (1 << 5)) {
+    sigma -= read_imagef(x_in, sampler, coord + (int2)( 0,  1));
+  }
+  if (a_val & (1 << 4)) {
+    sigma -= read_imagef(x_in, sampler, coord + (int2)( 1,  0));
+  }
+  float4 b_pixel = read_imagef(b, sampler, coord);
+  float4 x_pixel = read_imagef(x_in, sampler, coord);
+
+  // printf("%d\n", a_val & 0x0F);
+  write_imagef(x_out, coord, (b_pixel - sigma) / (a_val & 0x0F));
 }
 
 kernel void hello(read_only image2d_t in,
