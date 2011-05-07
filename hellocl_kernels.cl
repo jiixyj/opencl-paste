@@ -65,20 +65,16 @@ kernel void setup_system(read_only image2d_t source,
       laplace += target_r;
     }
     if (u_s) {
-      laplace -= source_u;
-      laplace += source_m;
+      laplace += source_m - source_u;
     }
     if (l_s) {
-      laplace -= source_l;
-      laplace += source_m;
+      laplace += source_m - source_l;
     }
     if (d_s) {
-      laplace -= source_d;
-      laplace += source_m;
+      laplace += source_m - source_d;
     }
     if (r_s) {
-      laplace -= source_r;
-      laplace += source_m;
+      laplace += source_m - source_r;
     }
 
     laplace.w = 255;
@@ -104,43 +100,19 @@ kernel void jacobi(read_only global uchar* a,
   size_t size_x = get_global_size(0);
 
   uchar a_val = a[coord.y * size_x + coord.x];
-  float4 sigma = (float4)(0.0f);
+  float4 sigma = read_imagef(b, sampler, coord);
   if (a_val & (1 << 7)) {
-    sigma -= read_imagef(x_in, sampler, coord + (int2)( 0, -1));
+    sigma += read_imagef(x_in, sampler, coord + (int2)( 0, -1));
   }
   if (a_val & (1 << 6)) {
-    sigma -= read_imagef(x_in, sampler, coord + (int2)(-1,  0));
+    sigma += read_imagef(x_in, sampler, coord + (int2)(-1,  0));
   }
   if (a_val & (1 << 5)) {
-    sigma -= read_imagef(x_in, sampler, coord + (int2)( 0,  1));
+    sigma += read_imagef(x_in, sampler, coord + (int2)( 0,  1));
   }
   if (a_val & (1 << 4)) {
-    sigma -= read_imagef(x_in, sampler, coord + (int2)( 1,  0));
-  }
-  float4 b_pixel = read_imagef(b, sampler, coord);
-  float4 x_pixel = read_imagef(x_in, sampler, coord);
-
-  // printf("%d\n", a_val & 0x0F);
-  write_imagef(x_out, coord, (b_pixel - sigma) / (a_val & 0x0F));
-}
-
-kernel void hello(read_only image2d_t in,
-                  write_only image2d_t out,
-                  int vertical) {
-  const int kernel_size = 50;
-
-  int2 coord = (int2)(get_global_id(0), get_global_id(1));
-  uint4 pixel = (uint4)(0);
-  if (vertical) {
-    for (int i = -kernel_size + coord.y; i <= kernel_size + coord.y; ++i) {
-      pixel += read_imageui(in, sampler, (int2)(coord.x, i));
-    }
-  } else {
-    for (int j = -kernel_size + coord.x; j <= kernel_size + coord.x; ++j) {
-      pixel += read_imageui(in, sampler, (int2)(j, coord.y));
-    }
+    sigma += read_imagef(x_in, sampler, coord + (int2)( 1,  0));
   }
 
-  pixel /= (kernel_size * 2 + 1);
-  write_imageui(out, (int2)(coord.x, coord.y), pixel);
+  write_imagef(x_out, coord, sigma / (a_val & 0x0F));
 }

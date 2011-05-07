@@ -202,7 +202,7 @@ int main(int argc, char* argv[]) {
     jacobi.setArg<cl::Buffer>(0, cl_a);
     jacobi.setArg<cl::Image2D>(1, cl_b);
 
-    for (int i = 0; i < 2000; ++i) {
+    for (int i = 0; i < 10000; ++i) {
       jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_1);
       jacobi.setArg<cl::Image2D>(3, *cl_image_ptr_2);
       queue.enqueueNDRangeKernel(jacobi,
