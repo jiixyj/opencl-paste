@@ -10,7 +10,6 @@ const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE |
 
 kernel void setup_system(read_only image2d_t source,
                          read_only image2d_t target,
-                         write_only global uchar* a,
                          write_only image2d_t b,
                          write_only image2d_t x) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
@@ -49,7 +48,6 @@ kernel void setup_system(read_only image2d_t source,
     if (r_o && r_s) {
       a_val |= 1 << 4;
     }
-    a[coord.y * size_x + coord.x] = a_val;
 
     uint4 laplace = (uint4)(0);
     if (!u_o && u_s) {
@@ -77,30 +75,29 @@ kernel void setup_system(read_only image2d_t source,
       laplace += source_m - source_r;
     }
 
-    laplace.w = 255;
+    laplace.w = a_val;
     // is OK because OpenCL has two's complement
     write_imagef(b, coord, convert_float4(as_int4(laplace)));
     write_imagef(x, coord, convert_float4(pixel));
 
   } else {
-    a[coord.y * size_x + coord.x] = 1;
     uint4 tmp = read_imageui(target, sampler, coord);
-    tmp.w = 255;
+    tmp.w = 1;
     float4 tmpf = convert_float4(tmp);
     write_imagef(b, coord, tmpf);
     write_imagef(x, coord, tmpf);
   }
 }
 
-kernel void jacobi(read_only global uchar* a,
-                   read_only image2d_t b,
+kernel void jacobi(read_only image2d_t b,
                    read_only image2d_t x_in,
                    write_only image2d_t x_out) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
   size_t size_x = get_global_size(0);
 
-  uchar a_val = a[coord.y * size_x + coord.x];
   float4 sigma = read_imagef(b, sampler, coord);
+  uchar a_val = sigma.w;
+  sigma.w = 255.0f;
   if (a_val & (1 << 7)) {
     sigma += read_imagef(x_in, sampler, coord + (int2)( 0, -1));
   }

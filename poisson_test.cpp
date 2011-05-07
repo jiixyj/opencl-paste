@@ -183,9 +183,8 @@ int main(int argc, char* argv[]) {
     cl::Kernel kernel(program, "setup_system", NULL);
     kernel.setArg<cl::Image2D>(0, cl_source);
     kernel.setArg<cl::Image2D>(1, cl_target);
-    kernel.setArg<cl::Buffer>(2, cl_a);
-    kernel.setArg<cl::Image2D>(3, cl_b);
-    kernel.setArg<cl::Image2D>(4, cl_x1);
+    kernel.setArg<cl::Image2D>(2, cl_b);
+    kernel.setArg<cl::Image2D>(3, cl_x1);
 
     cl::Event event;
     queue.enqueueNDRangeKernel(kernel,
@@ -198,12 +197,11 @@ int main(int argc, char* argv[]) {
     cl_ulong start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
 
     cl::Kernel jacobi(program, "jacobi", NULL);
-    jacobi.setArg<cl::Buffer>(0, cl_a);
-    jacobi.setArg<cl::Image2D>(1, cl_b);
+    jacobi.setArg<cl::Image2D>(0, cl_b);
 
     for (int i = 0; i < 100; ++i) {
-      jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_1);
-      jacobi.setArg<cl::Image2D>(3, *cl_image_ptr_2);
+      jacobi.setArg<cl::Image2D>(1, *cl_image_ptr_1);
+      jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_2);
       queue.enqueueNDRangeKernel(jacobi,
                                  cl::NullRange,
                                  cl::NDRange(size_t(source.cols),
