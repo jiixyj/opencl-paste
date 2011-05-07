@@ -201,7 +201,7 @@ int main(int argc, char* argv[]) {
     jacobi.setArg<cl::Buffer>(0, cl_a);
     jacobi.setArg<cl::Image2D>(1, cl_b);
 
-    for (int i = 0; i < 10000; ++i) {
+    for (int i = 0; i < 100; ++i) {
       jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_1);
       jacobi.setArg<cl::Image2D>(3, *cl_image_ptr_2);
       queue.enqueueNDRangeKernel(jacobi,
@@ -219,16 +219,18 @@ int main(int argc, char* argv[]) {
 
     cl::Image2D cl_upscale(context, CL_MEM_WRITE_ONLY,
                            cl::ImageFormat(CL_RGBA, CL_FLOAT),
-                           size_t(source.cols) * 2, size_t(source.rows) * 2);
+                           size_t(source.cols) * 8, size_t(source.rows) * 8);
     cl::Kernel bilinear_filter(program, "bilinear_filter", NULL);
-    bilinear_filter.setArg<cl::Image2D>(0, cl_b);
+    bilinear_filter.setArg<cl::Image2D>(0, *cl_image_ptr_1);
     bilinear_filter.setArg<cl::Image2D>(1, cl_upscale);
-    queue.enqueueNDRangeKernel(bilinear_filter,
-                               cl::NullRange,
-                               cl::NDRange(size_t(source.cols) * 2,
-                                           size_t(source.rows) * 2),
-                               cl::NullRange,
-                               NULL, &event);
+    queue.enqueueNDRangeKernel(
+        bilinear_filter,
+        cl::NullRange,
+        cl::NDRange(cl_upscale.getImageInfo<CL_IMAGE_WIDTH>(),
+                    cl_upscale.getImageInfo<CL_IMAGE_HEIGHT>()),
+        cl::NullRange,
+        NULL, &event
+    );
     event.wait();
     save_cl_image("up.png", queue, cl_upscale);
 

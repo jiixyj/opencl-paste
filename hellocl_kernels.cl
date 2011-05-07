@@ -122,11 +122,12 @@ kernel void bilinear_filter(read_only image2d_t source,
                             write_only image2d_t output) {
 
   const sampler_t bilinear_sampler = CLK_NORMALIZED_COORDS_TRUE |
-                                     CLK_FILTER_NEAREST |
-                                     CLK_ADDRESS_NONE;
+                                     CLK_FILTER_LINEAR |
+                                     CLK_ADDRESS_CLAMP_TO_EDGE;
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
-  write_imagef(output, coord, read_imagef(source, bilinear_sampler,
-                           convert_float2(coord) /
+  write_imagef(output, coord,
+               read_imagef(source, bilinear_sampler,
+                           (convert_float2(coord) + (float2)(0.5f)) /
                            convert_float2(get_image_dim(output))));
 }
