@@ -24,7 +24,6 @@ void init_cl(cl::Context& context,
       context = cl::Context(CL_DEVICE_TYPE_CPU, properties);
     }
     std::vector<cl::Device> devices(context.getInfo<CL_CONTEXT_DEVICES>());
-    std::cerr << devices[0].getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>() << std::endl;
     queue = cl::CommandQueue(context, devices[0], CL_QUEUE_PROFILING_ENABLE);
   } catch (cl::Error error) {
     std::cerr << "ERROR: "
@@ -217,6 +216,22 @@ int main(int argc, char* argv[]) {
     cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
     double time = 1.e-9 * double(end - start);
     std::cerr << "Time for kernel to execute " << time << std::endl;
+
+    cl::Image2D cl_upscale(context, CL_MEM_WRITE_ONLY,
+                           cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                           size_t(source.cols) * 2, size_t(source.rows) * 2);
+    cl::Kernel bilinear_filter(program, "bilinear_filter", NULL);
+    bilinear_filter.setArg<cl::Image2D>(0, cl_b);
+    bilinear_filter.setArg<cl::Image2D>(1, cl_upscale);
+    queue.enqueueNDRangeKernel(bilinear_filter,
+                               cl::NullRange,
+                               cl::NDRange(size_t(source.cols) * 2,
+                                           size_t(source.rows) * 2),
+                               cl::NullRange,
+                               NULL, &event);
+    event.wait();
+    save_cl_image("up.png", queue, cl_upscale);
+
   } catch (cl::Error error) {
     std::cerr << "ERROR: "
               << error.what()
