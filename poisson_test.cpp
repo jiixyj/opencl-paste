@@ -7,6 +7,8 @@
 #include <cv.h>
 #include <highgui.h>
 
+#include <sys/stat.h>
+
 void init_cl(cl::Context& context,
              cl::CommandQueue& queue) {
   try {
@@ -37,8 +39,21 @@ void init_cl(cl::Context& context,
 cl::Program load_program(const cl::Context& context,
                          std::string program_name) {
   bool load_binary = true;
+
+  time_t so_time = 0;
+  time_t cl_time = 1;
+  struct stat stat_buf_so;
+  struct stat stat_buf_cl;
+  int stat_status_so = stat((program_name + ".so").c_str(), &stat_buf_so);
+  int stat_status_cl = stat((program_name + ".cl").c_str(), &stat_buf_cl);
+  if (!stat_status_so && !stat_status_cl) {
+    so_time = stat_buf_so.st_mtime;
+    cl_time = stat_buf_cl.st_mtime;
+  }
+
   std::ifstream ifs(program_name + ".so");
-  if (!ifs) {
+  if (!ifs || so_time < cl_time) {
+    if (ifs) ifs.close();
     load_binary = false;
     ifs.open(program_name + ".cl");
   }
