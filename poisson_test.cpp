@@ -4,6 +4,7 @@
 
 #define __CL_ENABLE_EXCEPTIONS
 #include <CL/cl.hpp>
+
 #include <cv.h>
 #include <highgui.h>
 
