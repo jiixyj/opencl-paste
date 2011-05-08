@@ -54,7 +54,7 @@ GLuint LoadTexture( cv::Mat image )
     cv::flip(image, image_flipped, 0);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
                  image_flipped.cols, image_flipped.rows,
-                 0, GL_RGBA, GL_UNSIGNED_BYTE, image_flipped.data);
+                 0, GL_RGBA, GL_FLOAT, image_flipped.data);
     glGenerateMipmap(GL_TEXTURE_2D);
     int width, height;
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
@@ -63,12 +63,12 @@ GLuint LoadTexture( cv::Mat image )
     glGetTexLevelParameteriv(GL_TEXTURE_2D, max_level, GL_TEXTURE_WIDTH, &width);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, max_level, GL_TEXTURE_HEIGHT, &height);
     assert(width == 1 && height == 1);
-    uint8_t average[4];
-    glGetTexImage(GL_TEXTURE_2D, max_level, GL_RGBA, GL_UNSIGNED_BYTE, average);
-    std::cout << int(average[0]) << " "
-              << int(average[1]) << " "
-              << int(average[2]) << " "
-              << int(average[3]) << std::endl;
+    float average[4];
+    glGetTexImage(GL_TEXTURE_2D, max_level, GL_RGBA, GL_FLOAT, average);
+    std::cout << average[0] << " "
+              << average[1] << " "
+              << average[2] << " "
+              << average[3] << std::endl;
 
     return texture; //return whether it was successfull
 }
@@ -128,7 +128,8 @@ void reshape(int w, int h) {
 
 int main (int argc, char* argv[]) {
     //Load our texture
-    cv::Mat image = make_rgba(cv::imread(argv[1]));
+    cv::Mat image;
+    make_rgba(cv::imread(argv[1])).convertTo(image, CV_32F, 1.0 / 255.0);
     image_size = image.size();
 
     glutInit (&argc, argv);
