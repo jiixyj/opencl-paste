@@ -189,6 +189,7 @@ void save_cl_image(std::string filename,
 }
 
 GLuint g_texture;
+GLuint g_texture_2;
 
 void square() {
   glBindTexture(GL_TEXTURE_2D, g_texture);
@@ -202,7 +203,7 @@ void square() {
 
 cl::CommandQueue queue;
 cl::Kernel jacobi;
-cl::Image2DGL* cl_image_ptr_1;
+cl::Image2D* cl_image_ptr_1;
 cl::Image2D* cl_image_ptr_2;
 cv::Mat source;
 
@@ -213,19 +214,23 @@ void display() {
   glEnable(GL_TEXTURE_2D);
   gluLookAt(0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 
-  // cl::Event event;
-  // for (int i = 0; i < 100; ++i) {
-  //   jacobi.setArg<cl::Image2D>(1, *cl_image_ptr_1);
-  //   jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_2);
-  //   queue.enqueueNDRangeKernel(jacobi,
-  //                              cl::NullRange,
-  //                              cl::NDRange(size_t(source.cols),
-  //                                          size_t(source.rows)),
-  //                              cl::NullRange,
-  //                              NULL, &event);
-  //   std::swap(cl_image_ptr_1, cl_image_ptr_2);
-  // }
-  // event.wait();
+  glFinish();
+  // std::vector<cl::Memory> gl_image{*cl_image_ptr_1, *cl_image_ptr_2};
+  // queue.enqueueAcquireGLObjects(&gl_image);
+  cl::Event event;
+  for (int i = 0; i < 100; ++i) {
+    jacobi.setArg<cl::Image2D>(1, *cl_image_ptr_1);
+    jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_2);
+    queue.enqueueNDRangeKernel(jacobi,
+                               cl::NullRange,
+                               cl::NDRange(size_t(source.cols),
+                                           size_t(source.rows)),
+                               cl::NullRange,
+                               NULL, &event);
+    std::swap(cl_image_ptr_1, cl_image_ptr_2);
+  }
+  // queue.enqueueReleaseGLObjects(&gl_image, NULL, &event);
+  event.wait();
 
   square();
   glutSwapBuffers();
@@ -258,7 +263,8 @@ int main(int argc, char* argv[]) {
   std::cerr << "Status: Using GLEW "
             << glewGetString(GLEW_VERSION) << std::endl;
 
-  g_texture = LoadTexture(cv::Mat(), source.cols, source.rows);
+  g_texture   = LoadTexture(cv::Mat(), source.cols, source.rows);
+  g_texture_2 = LoadTexture(cv::Mat(), source.cols, source.rows);
 
 
   // Init OpenCL
@@ -278,11 +284,16 @@ int main(int argc, char* argv[]) {
   cl::Image2D cl_b(context, CL_MEM_READ_WRITE,
                    cl::ImageFormat(CL_RGBA, CL_FLOAT),
                    size_t(source.cols), size_t(source.rows));
-  cl::Image2DGL cl_x1(context, CL_MEM_WRITE_ONLY,
-                      GL_TEXTURE_2D, 0, g_texture);
+  cl::Image2D cl_x1(context, CL_MEM_READ_WRITE,
+                   cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                   size_t(source.cols), size_t(source.rows));
   cl::Image2D cl_x2(context, CL_MEM_READ_WRITE,
-                    cl::ImageFormat(CL_RGBA, CL_FLOAT),
-                    size_t(source.cols), size_t(source.rows));
+                   cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                   size_t(source.cols), size_t(source.rows));
+  // cl::Image2DGL cl_x1(context, CL_MEM_READ_WRITE,
+  //                     GL_TEXTURE_2D, 0, g_texture);
+  // cl::Image2DGL cl_x2(context, CL_MEM_READ_WRITE,
+  //                     GL_TEXTURE_2D, 0, g_texture_2);
   cl_image_ptr_1 = &cl_x1;
   cl_image_ptr_2 = &cl_x2;
 
@@ -310,15 +321,18 @@ int main(int argc, char* argv[]) {
     kernel.setArg<cl::Image2D>(0, cl_source);
     kernel.setArg<cl::Image2D>(1, cl_target);
     kernel.setArg<cl::Image2D>(2, cl_b);
-    kernel.setArg<cl::Image2DGL>(3, *cl_image_ptr_1);
+    kernel.setArg<cl::Image2D>(3, *cl_image_ptr_1);
 
     cl::Event event;
+    // std::vector<cl::Memory> gl_image{*cl_image_ptr_1};
+    // queue.enqueueAcquireGLObjects(&gl_image);
     queue.enqueueNDRangeKernel(kernel,
                                cl::NullRange,
                                cl::NDRange(size_t(source.cols),
                                            size_t(source.rows)),
                                cl::NullRange,
                                NULL, &event);
+    // queue.enqueueReleaseGLObjects(&gl_image, NULL, &event);
     event.wait();
     // cl_ulong start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
 
@@ -354,7 +368,19 @@ int main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
 
-  glutMainLoop();
+  // glutMainLoop();
+  cl::Event event;
+  for (int i = 0; i < 1000; ++i) {
+    jacobi.setArg<cl::Image2D>(1, *cl_image_ptr_1);
+    jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_2);
+    queue.enqueueNDRangeKernel(jacobi,
+                               cl::NullRange,
+                               cl::NDRange(size_t(source.cols),
+                                           size_t(source.rows)),
+                               cl::NullRange,
+                               NULL, &event);
+    std::swap(cl_image_ptr_1, cl_image_ptr_2);
+  }
 
   save_cl_image("b.png", queue, cl_b);
   save_cl_image("x.png", queue, *cl_image_ptr_1);
