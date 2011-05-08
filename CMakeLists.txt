@@ -28,3 +28,6 @@ add_custom_target(hellocl_kernels ALL ${CMAKE_COMMAND} -E copy
 
 add_executable(poisson poisson_test)
 target_link_libraries(poisson ${OPENCL_LIBRARIES} ${OpenCV_LIBS})
+
+add_executable(texture texture_test)
+target_link_libraries(texture ${OPENCL_LIBRARIES} ${OpenCV_LIBS} GLEW glut)
