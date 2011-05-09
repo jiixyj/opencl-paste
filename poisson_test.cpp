@@ -128,7 +128,7 @@ GLuint LoadTexture(cv::Mat image, int width = -1, int height = -1) {
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
                !image.empty() ? image_flipped.cols : width,
                !image.empty() ? image_flipped.rows : height,
-               0, GL_RGB, GL_FLOAT,
+               0, GL_RGBA, GL_FLOAT,
                !image.empty() ? image_flipped.data : NULL);
   // glGenerateMipmap(GL_TEXTURE_2D);
   // int width, height;

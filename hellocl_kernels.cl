@@ -75,19 +75,19 @@ kernel void setup_system(read_only image2d_t source,
       laplace += source_m - source_r;
     }
 
-    laplace.w = a_val;
 
-    float4 laplacef = convert_float4(as_int4(laplace)) / 255.0f;
+    float4 laplacef = convert_float4(as_int4(laplace));
+    laplacef.w = a_val;
     // is OK because OpenCL has two's complement
-    write_imagef(b, coord, laplacef);
-    write_imagef(x, coord, convert_float4(pixel) / 255.0f);
+    write_imagef(b, coord, laplacef / 255.0f);
+    write_imagef(x, coord, 0.0f);
 
   } else {
     uint4 tmp = read_imageui(target, sampler, coord);
     tmp.w = 1;
-    float4 tmpf = convert_float4(tmp) / 255.0f;
-    write_imagef(b, coord, tmpf);
-    write_imagef(x, coord, tmpf);
+    float4 tmpf = convert_float4(tmp);
+    write_imagef(b, coord, tmpf / 255.0f);
+    write_imagef(x, coord, 0.0f);
   }
 }
 
@@ -114,7 +114,7 @@ kernel void jacobi(read_only image2d_t b,
   }
 
   // coord.x = coord.x * 2;
-  write_imagef(x_out, coord, sigma / (a_val & 0x0F));
+  write_imagef(x_out, coord, (sigma / (a_val & 0x0F)));
 }
 
 
