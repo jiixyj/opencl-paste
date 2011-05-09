@@ -209,6 +209,7 @@ cv::Mat source;
 
 void display() {
   static std::vector<cl::Memory> gl_image{*cl_render_ptr};
+  static const int number_iterations = 50;
 
   glClearColor(0.0, 0.0, 0.0, 1.0);
   glClear(GL_COLOR_BUFFER_BIT);
@@ -223,10 +224,10 @@ void display() {
   queue.enqueueAcquireGLObjects(&gl_image);
   cl::Event event;
   cl_ulong start;
-  for (int i = 0; i < 10; ++i) {
+  for (int i = 0; i < number_iterations; ++i) {
     jacobi.setArg<cl::Image2D>(1, *cl_image_ptr_1);
     jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_2);
-    jacobi.setArg<int>(4, i == 9);
+    jacobi.setArg<int>(4, i == number_iterations - 1);
     queue.enqueueNDRangeKernel(jacobi,
                                cl::NullRange,
                                cl::NDRange(size_t(source.cols),
