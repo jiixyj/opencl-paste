@@ -93,7 +93,8 @@ kernel void setup_system(read_only image2d_t source,
 
 kernel void jacobi(read_only image2d_t b,
                    read_only image2d_t x_in,
-                   write_only image2d_t x_out) {
+                   write_only image2d_t x_out,
+                   write_only image2d_t render) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
   size_t size_x = get_global_size(0);
 
@@ -115,6 +116,7 @@ kernel void jacobi(read_only image2d_t b,
 
   // coord.x = coord.x * 2;
   write_imagef(x_out, coord, (sigma / (a_val & 0x0F)));
+  write_imagef(render, coord, (sigma / (a_val & 0x0F)));
 }
 
 

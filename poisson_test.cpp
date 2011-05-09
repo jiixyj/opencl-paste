@@ -114,12 +114,11 @@ GLuint LoadTexture(cv::Mat image, int width = -1, int height = -1) {
 
   glGenTextures(1, &texture); //generate the texture with the loaded data
   glBindTexture(GL_TEXTURE_2D, texture); //bind the texture to it’s array
-  glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE); //set texture environment parameters
 
-  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
   cv::Mat image_flipped;
   if (!image.empty()) {
@@ -128,7 +127,7 @@ GLuint LoadTexture(cv::Mat image, int width = -1, int height = -1) {
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
                !image.empty() ? image_flipped.cols : width,
                !image.empty() ? image_flipped.rows : height,
-               0, GL_RGBA, GL_FLOAT,
+               0, GL_RGBA, GL_UNSIGNED_BYTE,
                !image.empty() ? image_flipped.data : NULL);
   // glGenerateMipmap(GL_TEXTURE_2D);
   // int width, height;
@@ -188,9 +187,7 @@ void save_cl_image(std::string filename,
   cv::imwrite(filename, out_mat);
 }
 
-GLuint g_texture_b;
 GLuint g_texture;
-GLuint g_texture_2;
 
 void square() {
   glBindTexture(GL_TEXTURE_2D, g_texture);
@@ -204,14 +201,13 @@ void square() {
 
 cl::CommandQueue queue;
 cl::Kernel jacobi;
-cl::Image2DGL* cl_b_ptr;
-cl::Image2DGL* cl_image_ptr_1;
-cl::Image2DGL* cl_image_ptr_2;
+cl::Image2D* cl_b_ptr;
+cl::Image2D* cl_image_ptr_1;
+cl::Image2D* cl_image_ptr_2;
+cl::Image2DGL* cl_render_ptr;
 cv::Mat source;
 
 void display() {
-  sleep(1);
-
   glClearColor(0.0, 0.0, 0.0, 1.0);
   glClear(GL_COLOR_BUFFER_BIT);
   glLoadIdentity();
@@ -223,13 +219,14 @@ void display() {
 
 
   glFinish();
-  std::vector<cl::Memory> gl_image{*cl_image_ptr_1, *cl_image_ptr_2, *cl_b_ptr};
+  std::vector<cl::Memory> gl_image{*cl_render_ptr};
   queue.enqueueAcquireGLObjects(&gl_image);
   cl::Event event;
   for (int i = 0; i < 10; ++i) {
-    jacobi.setArg<cl::Image2DGL>(0, *cl_b_ptr);
-    jacobi.setArg<cl::Image2DGL>(1, *cl_image_ptr_1);
-    jacobi.setArg<cl::Image2DGL>(2, *cl_image_ptr_2);
+    jacobi.setArg<cl::Image2D>(0, *cl_b_ptr);
+    jacobi.setArg<cl::Image2D>(1, *cl_image_ptr_1);
+    jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_2);
+    jacobi.setArg<cl::Image2DGL>(3, *cl_render_ptr);
     queue.enqueueNDRangeKernel(jacobi,
                                cl::NullRange,
                                cl::NDRange(size_t(source.cols),
@@ -270,9 +267,7 @@ int main(int argc, char* argv[]) {
   std::cerr << "Status: Using GLEW "
             << glewGetString(GLEW_VERSION) << std::endl;
 
-  g_texture_b = LoadTexture(cv::Mat(), source.cols, source.rows);
   g_texture   = LoadTexture(cv::Mat(), source.cols, source.rows);
-  g_texture_2 = LoadTexture(cv::Mat(), source.cols, source.rows);
 
 
   // Init OpenCL
@@ -289,21 +284,21 @@ int main(int argc, char* argv[]) {
   cl::Image2D cl_target(context, CL_MEM_READ_ONLY,
                         cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
                         size_t(target.cols), size_t(target.rows));
-  cl::Image2DGL cl_b(context, CL_MEM_READ_WRITE,
-                     GL_TEXTURE_2D, 0, g_texture_b);
-  //cl::Image2D cl_x1(context, CL_MEM_READ_WRITE,
-  //                 cl::ImageFormat(CL_RGBA, CL_FLOAT),
-  //                 size_t(source.cols), size_t(source.rows));
-  //cl::Image2D cl_x2(context, CL_MEM_READ_WRITE,
-  //                 cl::ImageFormat(CL_RGBA, CL_FLOAT),
-  //                 size_t(source.cols), size_t(source.rows));
-  cl::Image2DGL cl_x1(context, CL_MEM_READ_WRITE,
-                      GL_TEXTURE_2D, 0, g_texture);
-  cl::Image2DGL cl_x2(context, CL_MEM_READ_WRITE,
-                      GL_TEXTURE_2D, 0, g_texture_2);
+  cl::Image2D cl_b(context, CL_MEM_READ_WRITE,
+                   cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                   size_t(source.cols), size_t(source.rows));
+  cl::Image2D cl_x1(context, CL_MEM_READ_WRITE,
+                   cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                   size_t(source.cols), size_t(source.rows));
+  cl::Image2D cl_x2(context, CL_MEM_READ_WRITE,
+                   cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                   size_t(source.cols), size_t(source.rows));
+  cl::Image2DGL cl_render(context, CL_MEM_READ_WRITE,
+                          GL_TEXTURE_2D, 0, g_texture);
   cl_image_ptr_1 = &cl_x1;
   cl_image_ptr_2 = &cl_x2;
   cl_b_ptr = &cl_b;
+  cl_render_ptr = &cl_render;
 
   cl::size_t<3> origin;
   origin.push_back(0);
@@ -328,20 +323,16 @@ int main(int argc, char* argv[]) {
     cl::Kernel kernel(program, "setup_system", NULL);
     kernel.setArg<cl::Image2D>(0, cl_source);
     kernel.setArg<cl::Image2D>(1, cl_target);
-    kernel.setArg<cl::Image2DGL>(2, cl_b);
-    kernel.setArg<cl::Image2DGL>(3, *cl_image_ptr_1);
+    kernel.setArg<cl::Image2D>(2, cl_b);
+    kernel.setArg<cl::Image2D>(3, *cl_image_ptr_1);
 
     cl::Event event;
-    glFinish();
-    std::vector<cl::Memory> gl_image{*cl_image_ptr_1, cl_b};
-    queue.enqueueAcquireGLObjects(&gl_image);
     queue.enqueueNDRangeKernel(kernel,
                                cl::NullRange,
                                cl::NDRange(size_t(source.cols),
                                            size_t(source.rows)),
                                cl::NullRange,
                                NULL, &event);
-    queue.enqueueReleaseGLObjects(&gl_image, NULL, &event);
     event.wait();
     // cl_ulong start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
 
@@ -396,21 +387,27 @@ int main(int argc, char* argv[]) {
   }
 
   glutMainLoop();
-  // cl::Event event;
+  // std::vector<cl::Memory> gl_image{*cl_render_ptr};
+  // queue.enqueueAcquireGLObjects(&gl_image);
   // for (int i = 0; i < 1000; ++i) {
+  //   jacobi.setArg<cl::Image2D>(0, *cl_b_ptr);
   //   jacobi.setArg<cl::Image2D>(1, *cl_image_ptr_1);
   //   jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_2);
+  //   jacobi.setArg<cl::Image2DGL>(3, *cl_render_ptr);
   //   queue.enqueueNDRangeKernel(jacobi,
   //                              cl::NullRange,
   //                              cl::NDRange(size_t(source.cols),
   //                                          size_t(source.rows)),
   //                              cl::NullRange,
-  //                              NULL, &event);
+  //                              NULL, NULL);
   //   std::swap(cl_image_ptr_1, cl_image_ptr_2);
   // }
+  // cl::Event event;
+  // queue.enqueueReleaseGLObjects(&gl_image, NULL, &event);
+  // event.wait();
 
-  save_cl_image("b.png", queue, cl_b);
-  save_cl_image("x.png", queue, *cl_image_ptr_1);
+  // save_cl_image("b.png", queue, cl_b);
+  // save_cl_image("x.png", queue, *cl_image_ptr_1);
 
   return EXIT_SUCCESS;
 }
