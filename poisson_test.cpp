@@ -204,19 +204,37 @@ cl::Kernel jacobi;
 cl::Image2D* cl_image_ptr_1;
 cl::Image2D* cl_image_ptr_2;
 cl::Image2DGL* cl_render_ptr;
-cv::Mat source;
 
 void display() {
   static std::vector<cl::Memory> gl_image{*cl_render_ptr};
   static size_t number_iterations = 10;
-  static struct timeval tv_begin;
-  static struct timeval tv_end;
   static cl::Event event;
-  static double microseconds;
 
-  gettimeofday(&tv_begin, NULL);
+  static int frame_count = 0;
+  static int current_time;
+  static int previous_time = 0;
+  static int time_interval;
+  static float fps;
+  static float wanted_fps = 10.0f;
 
   square();
+
+  frame_count++;
+  current_time = glutGet(GLUT_ELAPSED_TIME);
+  time_interval = current_time - previous_time;
+  if (time_interval > 1000) {
+    fps = frame_count / (time_interval / 1000.0f);
+    std::cerr << "FPS: " << fps << " "
+              << "iterations: " << number_iterations << std::endl;
+    if (fps >= wanted_fps + 0.1f) {
+      number_iterations += fps - wanted_fps + 1;
+    } else if (fps <= wanted_fps - 0.1f) {
+      number_iterations -= wanted_fps - fps + 1;
+    }
+    previous_time = current_time;
+    frame_count = 0;
+  }
+
   glutSwapBuffers();
 
   glFinish();
@@ -225,27 +243,18 @@ void display() {
     jacobi.setArg<cl::Image2D>(1, *cl_image_ptr_1);
     jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_2);
     jacobi.setArg<int>(4, i == number_iterations - 1);
-    queue.enqueueNDRangeKernel(jacobi,
-                               cl::NullRange,
-                               cl::NDRange(size_t(source.cols),
-                                           size_t(source.rows)),
-                               cl::NullRange,
-                               NULL, NULL);
+    queue.enqueueNDRangeKernel(
+      jacobi,
+      cl::NullRange,
+      cl::NDRange(cl_render_ptr->getImageInfo<CL_IMAGE_WIDTH>(),
+                  cl_render_ptr->getImageInfo<CL_IMAGE_HEIGHT>()),
+      cl::NullRange,
+      NULL, NULL
+    );
     std::swap(cl_image_ptr_1, cl_image_ptr_2);
   }
   queue.enqueueReleaseGLObjects(&gl_image, NULL, &event);
   event.wait();
-
-  gettimeofday(&tv_end, NULL);
-  microseconds = double(tv_end.tv_sec - tv_begin.tv_sec) +
-                 double(tv_end.tv_usec - tv_begin.tv_usec) / 1000000.0;
-  if (microseconds > 0.11) {
-    --number_iterations;
-  } else if (microseconds < 0.09) {
-    ++number_iterations;
-  }
-  std::cerr << "iterations per second: "
-            << double(number_iterations) / microseconds << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -253,8 +262,7 @@ int main(int argc, char* argv[]) {
     std::cerr << "syntax: <exe> source.png mask.png target.png" << std::endl;
     return 1;
   }
-  cv::Mat mask = cv::imread(argv[2], 0);
-  source = make_rgba(cv::imread(argv[1]), mask);
+  cv::Mat source = make_rgba(cv::imread(argv[1]), cv::imread(argv[2], 0));
   cv::Mat target = make_rgba(cv::imread(argv[3]));
 
   // Init OpenGL
