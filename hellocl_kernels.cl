@@ -75,6 +75,7 @@ kernel void setup_system(read_only image2d_t source,
       laplace += source_m - source_r;
     }
 
+    coord.x = coord.x * 2;
 
     float4 laplacef = convert_float4(as_int4(laplace));
     laplacef.w = a_val;
@@ -85,6 +86,7 @@ kernel void setup_system(read_only image2d_t source,
     uint4 tmp = read_imageui(target, sampler, coord);
     tmp.w = 1;
     float4 tmpf = convert_float4(tmp);
+    coord.x = coord.x * 2;
     write_imagef(b, coord, tmpf);
     write_imagef(x, coord, tmpf);
   }
@@ -113,12 +115,12 @@ kernel void jacobi(read_only image2d_t b,
     sigma += read_imagef(x_in, sampler, coord + (int2)( 1,  0));
   }
 
-  // coord.x = coord.x * 2;
   float4 result = sigma / (a_val & 0x0F);
-  write_imagef(x_out, coord, result);
   if (write_to_image) {
     write_imagef(render, coord, result / 255.0f);
   }
+  coord.x = coord.x * 2;
+  write_imagef(x_out, coord, result);
 }
 
 
