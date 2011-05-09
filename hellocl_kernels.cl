@@ -80,14 +80,13 @@ kernel void setup_system(read_only image2d_t source,
     laplacef.w = a_val;
     // is OK because OpenCL has two's complement
     write_imagef(b, coord, laplacef);
-    write_imagef(x, coord, 0.0f);
-
+    write_imagef(x, coord, convert_float4(pixel));
   } else {
     uint4 tmp = read_imageui(target, sampler, coord);
     tmp.w = 1;
     float4 tmpf = convert_float4(tmp);
     write_imagef(b, coord, tmpf);
-    write_imagef(x, coord, 0.0f);
+    write_imagef(x, coord, tmpf);
   }
 }
 
