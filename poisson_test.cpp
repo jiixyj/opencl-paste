@@ -208,6 +208,8 @@ cl::Image2DGL* cl_render_ptr;
 cv::Mat source;
 
 void display() {
+  static std::vector<cl::Memory> gl_image{*cl_render_ptr};
+
   glClearColor(0.0, 0.0, 0.0, 1.0);
   glClear(GL_COLOR_BUFFER_BIT);
   glLoadIdentity();
@@ -218,14 +220,13 @@ void display() {
   glutSwapBuffers();
 
   glFinish();
-  std::vector<cl::Memory> gl_image{*cl_render_ptr};
   queue.enqueueAcquireGLObjects(&gl_image);
   cl::Event event;
+  cl_ulong start;
   for (int i = 0; i < 10; ++i) {
-    jacobi.setArg<cl::Image2D>(0, *cl_b_ptr);
     jacobi.setArg<cl::Image2D>(1, *cl_image_ptr_1);
     jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_2);
-    jacobi.setArg<cl::Image2DGL>(3, *cl_render_ptr);
+    jacobi.setArg<int>(4, i == 9);
     queue.enqueueNDRangeKernel(jacobi,
                                cl::NullRange,
                                cl::NDRange(size_t(source.cols),
@@ -233,10 +234,17 @@ void display() {
                                cl::NullRange,
                                NULL, &event);
     std::swap(cl_image_ptr_1, cl_image_ptr_2);
+    if (!i) {
+      event.wait();
+      start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+    }
   }
   queue.enqueueReleaseGLObjects(&gl_image, NULL, &event);
   event.wait();
 
+  cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
+  double time = 1.e-9 * double(end - start);
+  std::cerr << "Time for kernel to execute " << time << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -336,6 +344,8 @@ int main(int argc, char* argv[]) {
     // cl_ulong start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
 
     jacobi = cl::Kernel(program, "jacobi", NULL);
+    jacobi.setArg<cl::Image2D>(0, *cl_b_ptr);
+    jacobi.setArg<cl::Image2DGL>(3, *cl_render_ptr);
 
 //    cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
 //    double time = 1.e-9 * double(end - start);
@@ -386,24 +396,30 @@ int main(int argc, char* argv[]) {
   }
 
   glutMainLoop();
+  // cl::Event event;
+  // cl_ulong start = -1;
   // std::vector<cl::Memory> gl_image{*cl_render_ptr};
   // queue.enqueueAcquireGLObjects(&gl_image);
-  // for (int i = 0; i < 1000; ++i) {
-  //   jacobi.setArg<cl::Image2D>(0, *cl_b_ptr);
+  // for (int i = 0; i < 100; ++i) {
   //   jacobi.setArg<cl::Image2D>(1, *cl_image_ptr_1);
   //   jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_2);
-  //   jacobi.setArg<cl::Image2DGL>(3, *cl_render_ptr);
   //   queue.enqueueNDRangeKernel(jacobi,
   //                              cl::NullRange,
   //                              cl::NDRange(size_t(source.cols),
   //                                          size_t(source.rows)),
   //                              cl::NullRange,
-  //                              NULL, NULL);
+  //                              NULL, &event);
   //   std::swap(cl_image_ptr_1, cl_image_ptr_2);
+  //   if (start == -1) {
+  //     event.wait();
+  //     start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+  //   }
   // }
-  // cl::Event event;
   // queue.enqueueReleaseGLObjects(&gl_image, NULL, &event);
   // event.wait();
+  // cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
+  // double time = 1.e-9 * double(end - start);
+  // std::cerr << "Time for kernel to execute " << time << std::endl;
 
   // save_cl_image("b.png", queue, cl_b);
   // save_cl_image("x.png", queue, *cl_image_ptr_1);
