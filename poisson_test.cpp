@@ -217,7 +217,6 @@ void display() {
   square();
   glutSwapBuffers();
 
-
   glFinish();
   std::vector<cl::Memory> gl_image{*cl_render_ptr};
   queue.enqueueAcquireGLObjects(&gl_image);
