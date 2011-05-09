@@ -82,7 +82,12 @@ cl::Program load_program(const cl::Context& context,
       };
       program = cl::Program(context, source);
     }
-    program.build(devices);
+    std::stringstream options;
+    if (!strcmp(devices[0].getInfo<CL_DEVICE_NAME>().c_str(),
+                "GeForce 8800 GT")) {
+      options << "-D FIX_BROKEN_IMAGE_WRITING";
+    }
+    program.build(devices, options.str().c_str());
 
     if (!load_binary) {
       std::string log;
