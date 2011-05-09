@@ -207,22 +207,22 @@ cl::Image2DGL* cl_render_ptr;
 
 void display() {
   static std::vector<cl::Memory> gl_image{*cl_render_ptr};
-  static size_t number_iterations = 10;
+  static int number_iterations = 10;
   static cl::Event event;
 
   static int frame_count = 0;
   static int current_time;
-  static int previous_time = 0;
+  static int previous_time = glutGet(GLUT_ELAPSED_TIME);
   static int time_interval;
   static float fps;
-  static float wanted_fps = 10.0f;
+  static float wanted_fps = 30.0f;
 
   square();
 
   frame_count++;
   current_time = glutGet(GLUT_ELAPSED_TIME);
   time_interval = current_time - previous_time;
-  if (time_interval > 1000) {
+  if (time_interval > 400) {
     fps = frame_count / (time_interval / 1000.0f);
     std::cerr << "FPS: " << fps << " "
               << "iterations: " << number_iterations << std::endl;
@@ -236,8 +236,8 @@ void display() {
   }
 
   glutSwapBuffers();
-
   glFinish();
+
   queue.enqueueAcquireGLObjects(&gl_image);
   for (size_t i = 0; i < number_iterations; ++i) {
     jacobi.setArg<cl::Image2D>(1, *cl_image_ptr_1);
