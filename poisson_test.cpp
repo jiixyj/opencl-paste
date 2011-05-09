@@ -13,6 +13,7 @@
 #include <highgui.h>
 
 #include <sys/stat.h>
+#include <sys/time.h>
 
 void init_cl(cl::Context& context,
              cl::CommandQueue& queue) {
@@ -190,7 +191,6 @@ void save_cl_image(std::string filename,
 GLuint g_texture;
 
 void square() {
-  glBindTexture(GL_TEXTURE_2D, g_texture);
   glBegin(GL_QUADS);
   glTexCoord2d(0.0, 0.0); glVertex2d(-1.0, -1.0);
   glTexCoord2d(1.0, 0.0); glVertex2d( 1.0, -1.0);
@@ -201,7 +201,6 @@ void square() {
 
 cl::CommandQueue queue;
 cl::Kernel jacobi;
-cl::Image2D* cl_b_ptr;
 cl::Image2D* cl_image_ptr_1;
 cl::Image2D* cl_image_ptr_2;
 cl::Image2DGL* cl_render_ptr;
@@ -209,22 +208,20 @@ cv::Mat source;
 
 void display() {
   static std::vector<cl::Memory> gl_image{*cl_render_ptr};
-  static const int number_iterations = 50;
+  static size_t number_iterations = 10;
+  static struct timeval tv_begin;
+  static struct timeval tv_end;
+  static cl::Event event;
+  static double microseconds;
 
-  glClearColor(0.0, 0.0, 0.0, 1.0);
-  glClear(GL_COLOR_BUFFER_BIT);
-  glLoadIdentity();
-  glEnable(GL_TEXTURE_2D);
-  gluLookAt(0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+  gettimeofday(&tv_begin, NULL);
 
   square();
   glutSwapBuffers();
 
   glFinish();
   queue.enqueueAcquireGLObjects(&gl_image);
-  cl::Event event;
-  cl_ulong start;
-  for (int i = 0; i < number_iterations; ++i) {
+  for (size_t i = 0; i < number_iterations; ++i) {
     jacobi.setArg<cl::Image2D>(1, *cl_image_ptr_1);
     jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_2);
     jacobi.setArg<int>(4, i == number_iterations - 1);
@@ -233,19 +230,22 @@ void display() {
                                cl::NDRange(size_t(source.cols),
                                            size_t(source.rows)),
                                cl::NullRange,
-                               NULL, &event);
+                               NULL, NULL);
     std::swap(cl_image_ptr_1, cl_image_ptr_2);
-    if (!i) {
-      event.wait();
-      start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
-    }
   }
   queue.enqueueReleaseGLObjects(&gl_image, NULL, &event);
   event.wait();
 
-  cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
-  double time = 1.e-9 * double(end - start);
-  std::cerr << "Time for kernel to execute " << time << std::endl;
+  gettimeofday(&tv_end, NULL);
+  microseconds = double(tv_end.tv_sec - tv_begin.tv_sec) +
+                 double(tv_end.tv_usec - tv_begin.tv_usec) / 1000000.0;
+  if (microseconds > 0.11) {
+    --number_iterations;
+  } else if (microseconds < 0.09) {
+    ++number_iterations;
+  }
+  std::cerr << "iterations per second: "
+            << double(number_iterations) / microseconds << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -275,7 +275,13 @@ int main(int argc, char* argv[]) {
   std::cerr << "Status: Using GLEW "
             << glewGetString(GLEW_VERSION) << std::endl;
 
+  glClearColor(0.0, 0.0, 0.0, 1.0);
+  glClear(GL_COLOR_BUFFER_BIT);
+  glLoadIdentity();
+  glEnable(GL_TEXTURE_2D);
+  gluLookAt(0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
   g_texture   = LoadTexture(cv::Mat(), source.cols, source.rows);
+  glBindTexture(GL_TEXTURE_2D, g_texture);
 
 
   // Init OpenCL
@@ -305,7 +311,6 @@ int main(int argc, char* argv[]) {
                           GL_TEXTURE_2D, 0, g_texture);
   cl_image_ptr_1 = &cl_x1;
   cl_image_ptr_2 = &cl_x2;
-  cl_b_ptr = &cl_b;
   cl_render_ptr = &cl_render;
 
   cl::size_t<3> origin;
@@ -345,7 +350,7 @@ int main(int argc, char* argv[]) {
     // cl_ulong start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
 
     jacobi = cl::Kernel(program, "jacobi", NULL);
-    jacobi.setArg<cl::Image2D>(0, *cl_b_ptr);
+    jacobi.setArg<cl::Image2D>(0, cl_b);
     jacobi.setArg<cl::Image2DGL>(3, *cl_render_ptr);
 
 //    cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
