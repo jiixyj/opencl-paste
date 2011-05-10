@@ -117,7 +117,7 @@ cl::Program load_program(const cl::Context& context,
 }
 
 GLuint load_texture(cv::Mat image, int width = -1, int height = -1) {
-  std::vector<uint8_t> data(width * height, 255);
+  std::vector<uint8_t> data(width * height * 4, 255);
   GLuint texture;
 
   glGenTextures(1, &texture); //generate the texture with the loaded data
@@ -232,7 +232,7 @@ void display() {
   static int previous_time = glutGet(GLUT_ELAPSED_TIME);
   static int time_interval;
   static float fps;
-  static float wanted_fps = 60.0f;
+  static float wanted_fps = 10.0f;
 
   static std::vector<float> average;
 
