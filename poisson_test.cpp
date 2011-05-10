@@ -115,7 +115,7 @@ cl::Program load_program(const cl::Context& context,
   return program;
 }
 
-GLuint LoadTexture(cv::Mat image, int width = -1, int height = -1) {
+GLuint load_texture(cv::Mat image, int width = -1, int height = -1) {
   GLuint texture;
 
   glGenTextures(1, &texture); //generate the texture with the loaded data
@@ -126,29 +126,11 @@ GLuint LoadTexture(cv::Mat image, int width = -1, int height = -1) {
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-  cv::Mat image_flipped;
-  if (!image.empty()) {
-    cv::flip(image, image_flipped, 0);
-  }
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-               !image.empty() ? image_flipped.cols : width,
-               !image.empty() ? image_flipped.rows : height,
+               !image.empty() ? image.cols : width,
+               !image.empty() ? image.rows : height,
                0, GL_RGBA, GL_UNSIGNED_BYTE,
-               !image.empty() ? image_flipped.data : NULL);
-  // glGenerateMipmap(GL_TEXTURE_2D);
-  // int width, height;
-  // glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
-  // glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
-  // int max_level = int(std::floor(std::log2(std::max(width, height))));
-  // glGetTexLevelParameteriv(GL_TEXTURE_2D, max_level, GL_TEXTURE_WIDTH, &width);
-  // glGetTexLevelParameteriv(GL_TEXTURE_2D, max_level, GL_TEXTURE_HEIGHT, &height);
-  // assert(width == 1 && height == 1);
-  // float average[4];
-  // glGetTexImage(GL_TEXTURE_2D, max_level, GL_RGBA, GL_FLOAT, average);
-  // std::cout << average[0] << " "
-  //           << average[1] << " "
-  //           << average[2] << " "
-  //           << average[3] << std::endl;
+               !image.empty() ? image.data : NULL);
 
   return texture;
 }
@@ -194,8 +176,33 @@ void save_cl_image(std::string filename,
 }
 
 GLuint g_texture;
+GLuint g_residual;
+
+std::vector<float> image_average() {
+  float average[4];
+
+  glGenerateMipmap(GL_TEXTURE_2D);
+
+  int width, height;
+  glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
+  glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
+  int max_level = int(std::floor(std::log2(std::max(width, height))));
+  glGetTexLevelParameteriv(GL_TEXTURE_2D, max_level, GL_TEXTURE_WIDTH, &width);
+  glGetTexLevelParameteriv(GL_TEXTURE_2D, max_level, GL_TEXTURE_HEIGHT, &height);
+  assert(width == 1 && height == 1);
+  glGetTexImage(GL_TEXTURE_2D, max_level, GL_RGBA, GL_FLOAT, average);
+  return std::vector<float>(average, average + 4);
+}
 
 void square() {
+  glBindTexture(GL_TEXTURE_2D, g_residual);
+  glBegin(GL_QUADS);
+  glTexCoord2d(0.0, 0.0); glVertex2d(-1.0, -1.0);
+  glTexCoord2d(1.0, 0.0); glVertex2d( 1.0, -1.0);
+  glTexCoord2d(1.0, 1.0); glVertex2d( 1.0,  1.0);
+  glTexCoord2d(0.0, 1.0); glVertex2d(-1.0,  1.0);
+  glEnd();
+  glBindTexture(GL_TEXTURE_2D, g_texture);
   glBegin(GL_QUADS);
   glTexCoord2d(0.0, 0.0); glVertex2d(-1.0, -1.0);
   glTexCoord2d(1.0, 0.0); glVertex2d( 1.0, -1.0);
@@ -204,14 +211,18 @@ void square() {
   glEnd();
 }
 
+cl::Context context;
 cl::CommandQueue queue;
 cl::Kernel jacobi;
+cl::Kernel calculate_residual;
+cl::Kernel abs_image;
 cl::Image2D* cl_image_ptr_1;
 cl::Image2D* cl_image_ptr_2;
-cl::Image2DGL* cl_render_ptr;
+cl::Image2D* cl_res_ptr;
+cl::Image2DGL* cl_render_ptr = NULL;
+cl::Image2DGL* cl_g_residual_ptr;
 
 void display() {
-  static std::vector<cl::Memory> gl_image{*cl_render_ptr};
   static int number_iterations = 10;
   static cl::Event event;
 
@@ -220,33 +231,24 @@ void display() {
   static int previous_time = glutGet(GLUT_ELAPSED_TIME);
   static int time_interval;
   static float fps;
-  static float wanted_fps = 30.0f;
+  static float wanted_fps = 10.0f;
+
+  static std::vector<float> average;
+
+  try {
+    event.wait();
+  } catch (cl::Error err) { /* ignore */ }
 
   square();
-
-  frame_count++;
-  current_time = glutGet(GLUT_ELAPSED_TIME);
-  time_interval = current_time - previous_time;
-  if (time_interval > 400) {
-    fps = frame_count / (time_interval / 1000.0f);
-    std::cerr << "FPS: " << fps << " "
-              << "iterations: " << number_iterations << std::endl;
-    if (fps >= wanted_fps + 0.1f) {
-      number_iterations += fps - wanted_fps + 1;
-    } else if (fps <= wanted_fps - 0.1f) {
-      number_iterations -= wanted_fps - fps + 1;
-    }
-    previous_time = current_time;
-    frame_count = 0;
-  }
-
   glutSwapBuffers();
-  glFinish();
 
+  glFinish();
+  std::vector<cl::Memory> gl_image{*cl_render_ptr};
   queue.enqueueAcquireGLObjects(&gl_image);
-  for (size_t i = 0; i < number_iterations; ++i) {
+  for (int i = 0; i < number_iterations; ++i) {
     jacobi.setArg<cl::Image2D>(1, *cl_image_ptr_1);
     jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_2);
+    jacobi.setArg<cl::Image2DGL>(3, *cl_render_ptr);
     jacobi.setArg<int>(4, i == number_iterations - 1);
     queue.enqueueNDRangeKernel(
       jacobi,
@@ -259,7 +261,63 @@ void display() {
     std::swap(cl_image_ptr_1, cl_image_ptr_2);
   }
   queue.enqueueReleaseGLObjects(&gl_image, NULL, &event);
-  event.wait();
+  queue.flush();
+
+  frame_count++;
+  current_time = glutGet(GLUT_ELAPSED_TIME);
+  time_interval = current_time - previous_time;
+  if (time_interval > 500) {
+    fps = frame_count / (time_interval / 1000.0f);
+
+    calculate_residual.setArg<cl::Image2D>(1, *cl_image_ptr_1);
+    calculate_residual.setArg<cl::Image2D>(2, *cl_res_ptr);
+    queue.enqueueNDRangeKernel(
+      calculate_residual,
+      cl::NullRange,
+      cl::NDRange(cl_image_ptr_1->getImageInfo<CL_IMAGE_WIDTH>(),
+                  cl_image_ptr_1->getImageInfo<CL_IMAGE_HEIGHT>()),
+      cl::NullRange,
+      NULL, NULL
+    );
+    abs_image.setArg<cl::Image2D>(0, *cl_res_ptr);
+    abs_image.setArg<cl::Image2DGL>(1, *cl_g_residual_ptr);
+    std::vector<cl::Memory> gl_residual{*cl_g_residual_ptr};
+    queue.enqueueAcquireGLObjects(&gl_residual);
+    queue.enqueueNDRangeKernel(
+      abs_image,
+      cl::NullRange,
+      cl::NDRange(cl_render_ptr->getImageInfo<CL_IMAGE_WIDTH>(),
+                  cl_render_ptr->getImageInfo<CL_IMAGE_HEIGHT>()),
+      cl::NullRange,
+      NULL, NULL
+    );
+    queue.enqueueReleaseGLObjects(&gl_residual, NULL, &event);
+    event.wait();
+
+    glBindTexture(GL_TEXTURE_2D, g_residual);
+    average = image_average();
+
+    // if (cl_render_ptr)
+    //   delete cl_render_ptr;
+    // cl_render_ptr = new cl::Image2DGL(context, CL_MEM_READ_WRITE,
+    //                                   GL_TEXTURE_2D, 0, g_texture);
+
+    std::cerr << "FPS: " << fps << " "
+              << "iterations: " << number_iterations << " "
+              << "avg: ";
+    std::for_each(average.begin(),
+                  average.end(),
+                  [] (float a) { std::cout << a << " "; });
+    std::cout << std::endl;
+
+    if (fps >= wanted_fps + 0.1f) {
+      number_iterations += fps - wanted_fps + 0.25f;
+    } else if (fps <= wanted_fps - 0.1f) {
+      number_iterations -= wanted_fps - fps + 0.25f;
+    }
+    previous_time = current_time;
+    frame_count = 0;
+  }
 }
 
 int main(int argc, char* argv[]) {
@@ -269,6 +327,8 @@ int main(int argc, char* argv[]) {
   }
   cv::Mat source = make_rgba(cv::imread(argv[1]), cv::imread(argv[2], 0));
   cv::Mat target = make_rgba(cv::imread(argv[3]));
+  cv::flip(source, source, 0);
+  cv::flip(target, target, 0);
 
   // Init OpenGL
   glutInit(&argc, argv);
@@ -293,12 +353,12 @@ int main(int argc, char* argv[]) {
   glLoadIdentity();
   glEnable(GL_TEXTURE_2D);
   gluLookAt(0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
-  g_texture   = LoadTexture(cv::Mat(), source.cols, source.rows);
+  g_texture = load_texture(cv::Mat(), source.cols, source.rows);
+  g_residual = load_texture(cv::Mat(), source.cols, source.rows);
   glBindTexture(GL_TEXTURE_2D, g_texture);
 
 
   // Init OpenCL
-  cl::Context context;
   init_cl(context, queue);
 
   cl::Program program = load_program(context, "hellocl_kernels");
@@ -320,11 +380,16 @@ int main(int argc, char* argv[]) {
   cl::Image2D cl_x2(context, CL_MEM_READ_WRITE,
                    cl::ImageFormat(CL_RGBA, CL_FLOAT),
                    size_t(source.cols), size_t(source.rows));
-  cl::Image2DGL cl_render(context, CL_MEM_READ_WRITE,
-                          GL_TEXTURE_2D, 0, g_texture);
+  cl::Image2D cl_res(context, CL_MEM_READ_WRITE,
+                     cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                     size_t(source.cols), size_t(source.rows));
+  cl_render_ptr = new cl::Image2DGL(context, CL_MEM_WRITE_ONLY,
+                                    GL_TEXTURE_2D, 0, g_texture);
+  cl_g_residual_ptr = new cl::Image2DGL(context, CL_MEM_WRITE_ONLY,
+                                        GL_TEXTURE_2D, 0, g_residual);
   cl_image_ptr_1 = &cl_x1;
   cl_image_ptr_2 = &cl_x2;
-  cl_render_ptr = &cl_render;
+  cl_res_ptr = &cl_res;
 
   cl::size_t<3> origin;
   origin.push_back(0);
@@ -364,8 +429,10 @@ int main(int argc, char* argv[]) {
 
     jacobi = cl::Kernel(program, "jacobi", NULL);
     jacobi.setArg<cl::Image2D>(0, cl_b);
-    jacobi.setArg<cl::Image2DGL>(3, *cl_render_ptr);
 
+    calculate_residual = cl::Kernel(program, "calculate_residual", NULL);
+    calculate_residual.setArg<cl::Image2D>(0, cl_b);
+    abs_image = cl::Kernel(program, "abs_image", NULL);
 //    cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
 //    double time = 1.e-9 * double(end - start);
 //    std::cerr << "Time for kernel to execute " << time << std::endl;

@@ -18,17 +18,17 @@ kernel void setup_system(read_only image2d_t source,
   uint4 pixel = read_imageui(source, sampler, coord);
   if (pixel.w) {
     uint4 source_m = read_imageui(source, sampler, coord);
-    uint4 source_u = read_imageui(source, sampler, coord + (int2)( 0, -1));
+    uint4 source_u = read_imageui(source, sampler, coord + (int2)( 0,  1));
     uint4 source_l = read_imageui(source, sampler, coord + (int2)(-1,  0));
-    uint4 source_d = read_imageui(source, sampler, coord + (int2)( 0,  1));
+    uint4 source_d = read_imageui(source, sampler, coord + (int2)( 0, -1));
     uint4 source_r = read_imageui(source, sampler, coord + (int2)( 1,  0));
     bool u_o = source_u.w;
     bool l_o = source_l.w;
     bool d_o = source_d.w;
     bool r_o = source_r.w;
-    uint4 target_u = read_imageui(target, sampler, coord + (int2)( 0, -1));
+    uint4 target_u = read_imageui(target, sampler, coord + (int2)( 0,  1));
     uint4 target_l = read_imageui(target, sampler, coord + (int2)(-1,  0));
-    uint4 target_d = read_imageui(target, sampler, coord + (int2)( 0,  1));
+    uint4 target_d = read_imageui(target, sampler, coord + (int2)( 0, -1));
     uint4 target_r = read_imageui(target, sampler, coord + (int2)( 1,  0));
     bool u_s = target_u.w;
     bool l_s = target_l.w;
@@ -107,13 +107,13 @@ kernel void jacobi(read_only image2d_t b,
   uchar a_val = sigma.w;
   sigma.w = 255.0f;
   if (a_val & (1 << 7)) {
-    sigma += read_imagef(x_in, sampler, coord + (int2)( 0, -1));
+    sigma += read_imagef(x_in, sampler, coord + (int2)( 0,  1));
   }
   if (a_val & (1 << 6)) {
     sigma += read_imagef(x_in, sampler, coord + (int2)(-1,  0));
   }
   if (a_val & (1 << 5)) {
-    sigma += read_imagef(x_in, sampler, coord + (int2)( 0,  1));
+    sigma += read_imagef(x_in, sampler, coord + (int2)( 0, -1));
   }
   if (a_val & (1 << 4)) {
     sigma += read_imagef(x_in, sampler, coord + (int2)( 1,  0));
@@ -129,6 +129,42 @@ kernel void jacobi(read_only image2d_t b,
   write_imagef(x_out, coord, result);
 }
 
+kernel void calculate_residual(read_only image2d_t b,
+                               read_only image2d_t x,
+                               write_only image2d_t res) {
+  int2 coord = (int2)(get_global_id(0), get_global_id(1));
+
+  float4 sigma = read_imagef(b, sampler, coord);
+  uchar a_val = sigma.w;
+  sigma.w = 255.0f;
+  if (a_val & (1 << 7)) {
+    sigma += read_imagef(x, sampler, coord + (int2)( 0,  1));
+  }
+  if (a_val & (1 << 6)) {
+    sigma += read_imagef(x, sampler, coord + (int2)(-1,  0));
+  }
+  if (a_val & (1 << 5)) {
+    sigma += read_imagef(x, sampler, coord + (int2)( 0, -1));
+  }
+  if (a_val & (1 << 4)) {
+    sigma += read_imagef(x, sampler, coord + (int2)( 1,  0));
+  }
+  sigma -= (a_val & 0x0F) * read_imagef(x, sampler, coord);
+#ifdef FIX_BROKEN_IMAGE_WRITING
+  coord.x = coord.x * 2;
+#endif
+  write_imagef(res, coord, sigma);
+}
+
+kernel void abs_image(read_only image2d_t res,
+                      write_only image2d_t x) {
+  int2 coord = (int2)(get_global_id(0), get_global_id(1));
+  float4 sigma = read_imagef(res, sampler, coord);
+#ifdef FIX_BROKEN_IMAGE_WRITING
+  coord.x = coord.x * 2;
+#endif
+  write_imagef(x, coord, fabs(sigma));
+}
 
 kernel void bilinear_filter(read_only image2d_t source,
                             write_only image2d_t output) {
