@@ -131,12 +131,12 @@ kernel void jacobi(read_only image2d_t b,
 
 kernel void calculate_residual(read_only image2d_t b,
                                read_only image2d_t x,
-                               write_only image2d_t res) {
+                               write_only image2d_t res,
+                               write_only image2d_t gpu_abs) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
   float4 sigma = read_imagef(b, sampler, coord);
   uchar a_val = sigma.w;
-  sigma.w = 255.0f;
   if (a_val & (1 << 7)) {
     sigma += read_imagef(x, sampler, coord + (int2)( 0,  1));
   }
@@ -150,20 +150,17 @@ kernel void calculate_residual(read_only image2d_t b,
     sigma += read_imagef(x, sampler, coord + (int2)( 1,  0));
   }
   sigma -= (a_val & 0x0F) * read_imagef(x, sampler, coord);
+  sigma.w = 255.0f;
+  write_imagef(gpu_abs, coord, fabs(sigma));
 #ifdef FIX_BROKEN_IMAGE_WRITING
   coord.x = coord.x * 2;
 #endif
   write_imagef(res, coord, sigma);
 }
 
-kernel void abs_image(read_only image2d_t res,
-                      write_only image2d_t x) {
+kernel void reset_image(write_only image2d_t out) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
-  float4 sigma = read_imagef(res, sampler, coord);
-#ifdef FIX_BROKEN_IMAGE_WRITING
-  coord.x = coord.x * 2;
-#endif
-  write_imagef(x, coord, fabs(sigma));
+  write_imagef(out, coord, 0.0f);
 }
 
 kernel void bilinear_filter(read_only image2d_t source,

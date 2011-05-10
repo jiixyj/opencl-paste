@@ -1,3 +1,4 @@
+#include <array>
 #include <iostream>
 #include <iterator>
 #include <fstream>
@@ -116,6 +117,7 @@ cl::Program load_program(const cl::Context& context,
 }
 
 GLuint load_texture(cv::Mat image, int width = -1, int height = -1) {
+  std::vector<uint8_t> data(width * height, 255);
   GLuint texture;
 
   glGenTextures(1, &texture); //generate the texture with the loaded data
@@ -130,7 +132,7 @@ GLuint load_texture(cv::Mat image, int width = -1, int height = -1) {
                !image.empty() ? image.cols : width,
                !image.empty() ? image.rows : height,
                0, GL_RGBA, GL_UNSIGNED_BYTE,
-               !image.empty() ? image.data : NULL);
+               !image.empty() ? image.data : data.data());
 
   return texture;
 }
@@ -215,7 +217,6 @@ cl::Context context;
 cl::CommandQueue queue;
 cl::Kernel jacobi;
 cl::Kernel calculate_residual;
-cl::Kernel abs_image;
 cl::Image2D* cl_image_ptr_1;
 cl::Image2D* cl_image_ptr_2;
 cl::Image2D* cl_res_ptr;
@@ -231,7 +232,7 @@ void display() {
   static int previous_time = glutGet(GLUT_ELAPSED_TIME);
   static int time_interval;
   static float fps;
-  static float wanted_fps = 10.0f;
+  static float wanted_fps = 60.0f;
 
   static std::vector<float> average;
 
@@ -269,8 +270,11 @@ void display() {
   if (time_interval > 500) {
     fps = frame_count / (time_interval / 1000.0f);
 
+    std::vector<cl::Memory> gl_residual{*cl_g_residual_ptr};
+    queue.enqueueAcquireGLObjects(&gl_residual);
     calculate_residual.setArg<cl::Image2D>(1, *cl_image_ptr_1);
     calculate_residual.setArg<cl::Image2D>(2, *cl_res_ptr);
+    calculate_residual.setArg<cl::Image2DGL>(3, *cl_g_residual_ptr);
     queue.enqueueNDRangeKernel(
       calculate_residual,
       cl::NullRange,
@@ -279,28 +283,16 @@ void display() {
       cl::NullRange,
       NULL, NULL
     );
-    abs_image.setArg<cl::Image2D>(0, *cl_res_ptr);
-    abs_image.setArg<cl::Image2DGL>(1, *cl_g_residual_ptr);
-    std::vector<cl::Memory> gl_residual{*cl_g_residual_ptr};
-    queue.enqueueAcquireGLObjects(&gl_residual);
-    queue.enqueueNDRangeKernel(
-      abs_image,
-      cl::NullRange,
-      cl::NDRange(cl_render_ptr->getImageInfo<CL_IMAGE_WIDTH>(),
-                  cl_render_ptr->getImageInfo<CL_IMAGE_HEIGHT>()),
-      cl::NullRange,
-      NULL, NULL
-    );
     queue.enqueueReleaseGLObjects(&gl_residual, NULL, &event);
     event.wait();
 
     glBindTexture(GL_TEXTURE_2D, g_residual);
     average = image_average();
-
-    // if (cl_render_ptr)
-    //   delete cl_render_ptr;
-    // cl_render_ptr = new cl::Image2DGL(context, CL_MEM_READ_WRITE,
-    //                                   GL_TEXTURE_2D, 0, g_texture);
+    // average = std::vector<float>();
+    // if (cl_g_residual_ptr)
+    //   delete cl_g_residual_ptr;
+    // cl_g_residual_ptr = new cl::Image2DGL(context, CL_MEM_WRITE_ONLY,
+    //                                   GL_TEXTURE_2D, 0, g_residual);
 
     std::cerr << "FPS: " << fps << " "
               << "iterations: " << number_iterations << " "
@@ -391,6 +383,22 @@ int main(int argc, char* argv[]) {
   cl_image_ptr_2 = &cl_x2;
   cl_res_ptr = &cl_res;
 
+  cl::Event event;
+  // cl::Kernel reset_image(program, "reset_image", NULL);
+  // std::vector<cl::Memory> gl_residual{*cl_g_residual_ptr};
+  // queue.enqueueAcquireGLObjects(&gl_residual);
+  // reset_image.setArg<cl::Image2DGL>(0, *cl_g_residual_ptr);
+  // queue.enqueueNDRangeKernel(
+  //   reset_image,
+  //   cl::NullRange,
+  //   cl::NDRange(cl_g_residual_ptr->getImageInfo<CL_IMAGE_WIDTH>(),
+  //               cl_g_residual_ptr->getImageInfo<CL_IMAGE_HEIGHT>()),
+  //   cl::NullRange,
+  //   NULL, NULL
+  // );
+  // queue.enqueueReleaseGLObjects(&gl_residual, NULL, &event);
+  // event.wait();
+
   cl::size_t<3> origin;
   origin.push_back(0);
   origin.push_back(0);
@@ -417,7 +425,6 @@ int main(int argc, char* argv[]) {
     kernel.setArg<cl::Image2D>(2, cl_b);
     kernel.setArg<cl::Image2D>(3, *cl_image_ptr_1);
 
-    cl::Event event;
     queue.enqueueNDRangeKernel(kernel,
                                cl::NullRange,
                                cl::NDRange(size_t(source.cols),
@@ -432,7 +439,6 @@ int main(int argc, char* argv[]) {
 
     calculate_residual = cl::Kernel(program, "calculate_residual", NULL);
     calculate_residual.setArg<cl::Image2D>(0, cl_b);
-    abs_image = cl::Kernel(program, "abs_image", NULL);
 //    cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
 //    double time = 1.e-9 * double(end - start);
 //    std::cerr << "Time for kernel to execute " << time << std::endl;
