@@ -139,17 +139,19 @@ void display() {
     std::swap(cl_image_ptr_1, cl_image_ptr_2);
   }
   // residual calculation
-  calculate_residual.setArg<cl::Image2D>(1, *cl_image_ptr_1);
-  calculate_residual.setArg<cl::Image2D>(2, *cl_res_ptr);
-  calculate_residual.setArg<cl::Image2DGL>(3, *cl_g_residual_ptr);
-  queue.enqueueNDRangeKernel(
-    calculate_residual,
-    cl::NullRange,
-    cl::NDRange(cl_image_ptr_1->getImageInfo<CL_IMAGE_WIDTH>(),
-                cl_image_ptr_1->getImageInfo<CL_IMAGE_HEIGHT>()),
-    cl::NullRange,
-    NULL, NULL
-  );
+  if (draw_residual) {
+    calculate_residual.setArg<cl::Image2D>(1, *cl_image_ptr_1);
+    calculate_residual.setArg<cl::Image2D>(2, *cl_res_ptr);
+    calculate_residual.setArg<cl::Image2DGL>(3, *cl_g_residual_ptr);
+    queue.enqueueNDRangeKernel(
+      calculate_residual,
+      cl::NullRange,
+      cl::NDRange(cl_image_ptr_1->getImageInfo<CL_IMAGE_WIDTH>(),
+                  cl_image_ptr_1->getImageInfo<CL_IMAGE_HEIGHT>()),
+      cl::NullRange,
+      NULL, NULL
+    );
+  }
   queue.enqueueReleaseGLObjects(&gl_image, NULL, &event);
 
   // adjust frame rate
