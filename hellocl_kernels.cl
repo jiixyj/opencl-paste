@@ -11,7 +11,9 @@ const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE |
 kernel void setup_system(read_only image2d_t source,
                          read_only image2d_t target,
                          write_only image2d_t b,
-                         write_only image2d_t x) {
+                         write_only image2d_t x,
+                         int ox, int oy,
+                         int initialize) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
   size_t size_x = get_global_size(0);
 
@@ -26,10 +28,10 @@ kernel void setup_system(read_only image2d_t source,
     bool l_o = source_l.w;
     bool d_o = source_d.w;
     bool r_o = source_r.w;
-    uint4 target_u = read_imageui(target, sampler, coord + (int2)( 0,  1));
-    uint4 target_l = read_imageui(target, sampler, coord + (int2)(-1,  0));
-    uint4 target_d = read_imageui(target, sampler, coord + (int2)( 0, -1));
-    uint4 target_r = read_imageui(target, sampler, coord + (int2)( 1,  0));
+    uint4 target_u = read_imageui(target, sampler, coord + (int2)(ox, oy + 1));
+    uint4 target_l = read_imageui(target, sampler, coord + (int2)(ox - 1, oy));
+    uint4 target_d = read_imageui(target, sampler, coord + (int2)(ox, oy - 1));
+    uint4 target_r = read_imageui(target, sampler, coord + (int2)(ox + 1, oy));
     bool u_s = target_u.w;
     bool l_s = target_l.w;
     bool d_s = target_d.w;
@@ -83,9 +85,11 @@ kernel void setup_system(read_only image2d_t source,
     laplacef.w = a_val;
     // is OK because OpenCL has two's complement
     write_imagef(b, coord, laplacef);
-    write_imagef(x, coord, convert_float4(pixel));
+    if (initialize) {
+      write_imagef(x, coord, convert_float4(pixel));
+    }
   } else {
-    uint4 tmp = read_imageui(target, sampler, coord);
+    uint4 tmp = read_imageui(target, sampler, coord + (int2)(ox, oy));
     tmp.w = 1;
     float4 tmpf = convert_float4(tmp);
 #ifdef FIX_BROKEN_IMAGE_WRITING

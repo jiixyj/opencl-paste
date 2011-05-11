@@ -20,10 +20,13 @@
 
 GLuint g_texture;
 GLuint g_residual;
+GLuint g_target;
+int tw, th;
 cl::Context context;
 cl::CommandQueue queue;
 cl::Kernel jacobi;
 cl::Kernel calculate_residual;
+cl::Kernel setup_system;
 cl::Image2D* cl_image_ptr_1;
 cl::Image2D* cl_image_ptr_2;
 cl::Image2D* cl_res_ptr;
@@ -46,42 +49,50 @@ std::vector<float> image_average() {
   return std::vector<float>(average, average + 4);
 }
 
+int old_pos_x = 0;
+int old_pos_y = 0;
+int pos_x = 0;
+int pos_y = 0;
+
+bool draw_residual = false;
+
 void square() {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   int w = int(cl_render_ptr->getImageInfo<CL_IMAGE_WIDTH>());
   int h = int(cl_render_ptr->getImageInfo<CL_IMAGE_HEIGHT>());
 
+  glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-  glDisable(GL_TEXTURE_2D);
-  glColor4f(1.0f, 0.0f, 1.0f, 1.0f);
-  glBegin(GL_TRIANGLES);
-  glVertex3i(0, 0, -10);
-  glVertex3i(w, 0, -10);
-  glVertex3i(w, h, -10);
+  glEnable(GL_TEXTURE_2D);
+  glBindTexture(GL_TEXTURE_2D, g_target);
+  glBegin(GL_QUADS);
+  glTexCoord2d(0.0, 0.0); glVertex3i( 0,  0, -10);
+  glTexCoord2d(1.0, 0.0); glVertex3i(tw,  0, -10);
+  glTexCoord2d(1.0, 1.0); glVertex3i(tw, th, -10);
+  glTexCoord2d(0.0, 1.0); glVertex3i( 0, th, -10);
   glEnd();
 
-  glEnable(GL_TEXTURE_2D);
-  glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
   glBindTexture(GL_TEXTURE_2D, g_texture);
   glBegin(GL_QUADS);
-  glTexCoord2d(0.0, 0.0); glVertex3i(0, 0, -9);
-  glTexCoord2d(1.0, 0.0); glVertex3i(w, 0, -9);
-  glTexCoord2d(1.0, 1.0); glVertex3i(w, h, -9);
-  glTexCoord2d(0.0, 1.0); glVertex3i(0, h, -9);
+  glTexCoord2d(0.0, 0.0); glVertex3i(pos_x, pos_y, -9);
+  glTexCoord2d(1.0, 0.0); glVertex3i(pos_x + w, pos_y, -9);
+  glTexCoord2d(1.0, 1.0); glVertex3i(pos_x + w, pos_y + h, -9);
+  glTexCoord2d(0.0, 1.0); glVertex3i(pos_x, pos_y + h, -9);
   glEnd();
 
+  if (draw_residual) {
+    glBlendFunc(GL_ONE, GL_ONE);
 
-  glBlendFunc(GL_ONE, GL_ONE);
-
-  glBindTexture(GL_TEXTURE_2D, g_residual);
-  glBegin(GL_QUADS);
-  glTexCoord2d(0.0, 0.0); glVertex3i(0, 0, -8);
-  glTexCoord2d(1.0, 0.0); glVertex3i(w, 0, -8);
-  glTexCoord2d(1.0, 1.0); glVertex3i(w, h, -8);
-  glTexCoord2d(0.0, 1.0); glVertex3i(0, h, -8);
-  glEnd();
+    glBindTexture(GL_TEXTURE_2D, g_residual);
+    glBegin(GL_QUADS);
+    glTexCoord2d(0.0, 0.0); glVertex3i(pos_x, pos_y, -8);
+    glTexCoord2d(1.0, 0.0); glVertex3i(pos_x + w, pos_y, -8);
+    glTexCoord2d(1.0, 1.0); glVertex3i(pos_x + w, pos_y + h, -8);
+    glTexCoord2d(0.0, 1.0); glVertex3i(pos_x, pos_y + h, -8);
+    glEnd();
+  }
 }
 
 cl::Event event;
@@ -96,7 +107,9 @@ void display() {
   static float wanted_fps = 30.0f;
 
   // Wait for kernel calculations from last frame to finish
-  event.wait();
+  try {
+    event.wait();
+  } catch (cl::Error err) { /* ignore */ }
 
   // Calculate average of residual image
   glBindTexture(GL_TEXTURE_2D, g_residual);
@@ -165,6 +178,71 @@ void display() {
   }
 }
 
+bool button_pressed = false;
+int ww, wh;
+int old_x, old_y;
+
+void mouseEvent(int button, int state, int x, int y) {
+  if (button == GLUT_LEFT_BUTTON) {
+    y = wh - y;
+    if (state == GLUT_UP) {
+      button_pressed = false;
+      old_pos_x = pos_x;
+      old_pos_y = pos_y;
+    } else {
+      button_pressed = true;
+      old_x = x;
+      old_y = y;
+    }
+  }
+}
+
+void setup_new_system(bool initialize);
+void mouseMoveEvent(int x, int y) {
+  if (button_pressed) {
+    y = wh - y;
+    pos_x = old_pos_x + x - old_x;
+    pos_y = old_pos_y + y - old_y;
+    setup_new_system(false);
+  }
+}
+void keyboardEvent(unsigned char key, int x, int y) {
+  switch (key) {
+    case 'q':
+    case '':
+      exit(0);
+      break;
+    case 'r':
+      draw_residual = !draw_residual;
+      break;
+  }
+}
+
+cl::Image2D cl_source;
+cl::Image2D cl_target;
+cl::Image2D cl_b;
+
+void setup_new_system(bool initialize) {
+  cl::Event ev;
+  setup_system.setArg<cl::Image2D>(0, cl_source);
+  setup_system.setArg<cl::Image2D>(1, cl_target);
+  setup_system.setArg<cl::Image2D>(2, cl_b);
+  setup_system.setArg<cl::Image2D>(3, *cl_image_ptr_1);
+  setup_system.setArg<cl_int>(4, pos_x);
+  setup_system.setArg<cl_int>(5, pos_y);
+  setup_system.setArg<cl_int>(6, initialize);
+
+  queue.enqueueNDRangeKernel(
+    setup_system,
+    cl::NullRange,
+    cl::NDRange(cl_source.getImageInfo<CL_IMAGE_WIDTH>(),
+                cl_source.getImageInfo<CL_IMAGE_HEIGHT>()),
+    cl::NullRange,
+    NULL, &ev
+  );
+  ev.wait();
+}
+
 int main(int argc, char* argv[]) {
   if (argc != 4) {
     std::cerr << "syntax: <exe> source.png mask.png target.png" << std::endl;
@@ -174,15 +252,22 @@ int main(int argc, char* argv[]) {
   cv::Mat target = make_rgba(cv::imread(argv[3]));
   cv::flip(source, source, 0);
   cv::flip(target, target, 0);
+  th = target.rows;
+  tw = target.cols;
 
   // Init OpenGL
   glutInit(&argc, argv);
   glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);
-  glutInitWindowSize(source.cols, source.rows);
+  ww = target.cols;
+  wh = target.rows;
+  glutInitWindowSize(ww, wh);
   glutInitWindowPosition(100, 100);
   glutCreateWindow("Poissonviz");
   glutDisplayFunc(display);
   glutIdleFunc(display);
+  glutMouseFunc(mouseEvent);
+  glutMotionFunc(mouseMoveEvent);
+  glutKeyboardFunc(keyboardEvent);
 
   GLenum err = glewInit();
   if (err != GLEW_OK) {
@@ -198,12 +283,13 @@ int main(int argc, char* argv[]) {
 
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  glOrtho(0, source.cols, 0, source.rows, 0.5, 100);
+  glOrtho(0, target.cols, 0, target.rows, 0.5, 100);
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
 
   g_texture = load_texture(cv::Mat(), source.cols, source.rows);
   g_residual = load_texture(cv::Mat(), source.cols, source.rows);
+  g_target = load_texture(target);
 
   // Init OpenCL
   init_cl(context, queue);
@@ -212,15 +298,15 @@ int main(int argc, char* argv[]) {
 
   size_t nr_pixels = size_t(source.rows) * size_t(source.cols);
   cl::Buffer cl_a(context, CL_MEM_READ_WRITE, nr_pixels * sizeof(cl_uchar));
-  cl::Image2D cl_source(context, CL_MEM_READ_ONLY,
-                        cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
-                        size_t(source.cols), size_t(source.rows));
-  cl::Image2D cl_target(context, CL_MEM_READ_ONLY,
-                        cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
-                        size_t(target.cols), size_t(target.rows));
-  cl::Image2D cl_b(context, CL_MEM_READ_WRITE,
-                   cl::ImageFormat(CL_RGBA, CL_FLOAT),
-                   size_t(source.cols), size_t(source.rows));
+  cl_source = cl::Image2D(context, CL_MEM_READ_ONLY,
+                              cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
+                              size_t(source.cols), size_t(source.rows));
+  cl_target = cl::Image2D(context, CL_MEM_READ_ONLY,
+                              cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
+                              size_t(target.cols), size_t(target.rows));
+  cl_b = cl::Image2D(context, CL_MEM_READ_WRITE,
+                         cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                         size_t(source.cols), size_t(source.rows));
   cl::Image2D cl_x1(context, CL_MEM_READ_WRITE,
                    cl::ImageFormat(CL_RGBA, CL_FLOAT),
                    size_t(source.cols), size_t(source.rows));
@@ -258,18 +344,8 @@ int main(int argc, char* argv[]) {
                           target.data);
 
   try {
-    cl::Kernel kernel(program, "setup_system", NULL);
-    kernel.setArg<cl::Image2D>(0, cl_source);
-    kernel.setArg<cl::Image2D>(1, cl_target);
-    kernel.setArg<cl::Image2D>(2, cl_b);
-    kernel.setArg<cl::Image2D>(3, *cl_image_ptr_1);
-
-    queue.enqueueNDRangeKernel(kernel,
-                               cl::NullRange,
-                               cl::NDRange(size_t(source.cols),
-                                           size_t(source.rows)),
-                               cl::NullRange,
-                               NULL, &event);
+    setup_system = cl::Kernel(program, "setup_system", NULL);
+    setup_new_system(true);
 
     jacobi = cl::Kernel(program, "jacobi", NULL);
     jacobi.setArg<cl::Image2D>(0, cl_b);
