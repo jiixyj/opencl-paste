@@ -49,25 +49,27 @@ std::vector<float> image_average() {
 void square() {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+  int w = int(cl_render_ptr->getImageInfo<CL_IMAGE_WIDTH>());
+  int h = int(cl_render_ptr->getImageInfo<CL_IMAGE_HEIGHT>());
 
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
   glDisable(GL_TEXTURE_2D);
   glColor4f(1.0f, 0.0f, 1.0f, 1.0f);
   glBegin(GL_TRIANGLES);
-  glVertex3d(-1.0, -1.0, -0.1);
-  glVertex3d( 1.0, -1.0, -0.1);
-  glVertex3d( 1.0,  1.0, -0.1);
+  glVertex3i(0, 0, -10);
+  glVertex3i(w, 0, -10);
+  glVertex3i(w, h, -10);
   glEnd();
 
   glEnable(GL_TEXTURE_2D);
   glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
   glBindTexture(GL_TEXTURE_2D, g_texture);
   glBegin(GL_QUADS);
-  glTexCoord2d(0.0, 0.0); glVertex3d(-1.0, -1.0, 0.0);
-  glTexCoord2d(1.0, 0.0); glVertex3d( 1.0, -1.0, 0.0);
-  glTexCoord2d(1.0, 1.0); glVertex3d( 1.0,  1.0, 0.0);
-  glTexCoord2d(0.0, 1.0); glVertex3d(-1.0,  1.0, 0.0);
+  glTexCoord2d(0.0, 0.0); glVertex3i(0, 0, -9);
+  glTexCoord2d(1.0, 0.0); glVertex3i(w, 0, -9);
+  glTexCoord2d(1.0, 1.0); glVertex3i(w, h, -9);
+  glTexCoord2d(0.0, 1.0); glVertex3i(0, h, -9);
   glEnd();
 
 
@@ -75,41 +77,45 @@ void square() {
 
   glBindTexture(GL_TEXTURE_2D, g_residual);
   glBegin(GL_QUADS);
-  glTexCoord2d(0.0, 0.0); glVertex3d(-1.0, -1.0, 0.1);
-  glTexCoord2d(1.0, 0.0); glVertex3d( 1.0, -1.0, 0.1);
-  glTexCoord2d(1.0, 1.0); glVertex3d( 1.0,  1.0, 0.1);
-  glTexCoord2d(0.0, 1.0); glVertex3d(-1.0,  1.0, 0.1);
+  glTexCoord2d(0.0, 0.0); glVertex3i(0, 0, -8);
+  glTexCoord2d(1.0, 0.0); glVertex3i(w, 0, -8);
+  glTexCoord2d(1.0, 1.0); glVertex3i(w, h, -8);
+  glTexCoord2d(0.0, 1.0); glVertex3i(0, h, -8);
   glEnd();
 }
 
-void display() {
-  static int number_iterations = 10;
-  static cl::Event event;
+cl::Event event;
 
-  static int frame_count = 0;
+void display() {
+  static double number_iterations = 10.0;
+  static size_t frame_count = 0;
   static int current_time;
   static int previous_time = glutGet(GLUT_ELAPSED_TIME);
   static int time_interval;
   static float fps;
-  static float wanted_fps = 10.0f;
+  static float wanted_fps = 30.0f;
 
-  static std::vector<float> average;
+  // Wait for kernel calculations from last frame to finish
+  event.wait();
 
-  try {
-    event.wait();
-  } catch (cl::Error err) { /* ignore */ }
+  // Calculate average of residual image
+  glBindTexture(GL_TEXTURE_2D, g_residual);
+  std::vector<float> average = image_average();
 
+  // draw image
   square();
   glutSwapBuffers();
 
+  // Jacobi iterations
   glFinish();
-  std::vector<cl::Memory> gl_image{*cl_render_ptr};
+  std::vector<cl::Memory> gl_image{*cl_render_ptr, *cl_g_residual_ptr};
   queue.enqueueAcquireGLObjects(&gl_image);
-  for (int i = 0; i < number_iterations; ++i) {
+  int number_iterations_int = int(number_iterations + 0.5);
+  for (int i = 0; i < number_iterations_int; ++i) {
     jacobi.setArg<cl::Image2D>(1, *cl_image_ptr_1);
     jacobi.setArg<cl::Image2D>(2, *cl_image_ptr_2);
     jacobi.setArg<cl::Image2DGL>(3, *cl_render_ptr);
-    jacobi.setArg<int>(4, i == number_iterations - 1);
+    jacobi.setArg<int>(4, i == number_iterations_int - 1);
     queue.enqueueNDRangeKernel(
       jacobi,
       cl::NullRange,
@@ -120,38 +126,26 @@ void display() {
     );
     std::swap(cl_image_ptr_1, cl_image_ptr_2);
   }
+  // residual calculation
+  calculate_residual.setArg<cl::Image2D>(1, *cl_image_ptr_1);
+  calculate_residual.setArg<cl::Image2D>(2, *cl_res_ptr);
+  calculate_residual.setArg<cl::Image2DGL>(3, *cl_g_residual_ptr);
+  queue.enqueueNDRangeKernel(
+    calculate_residual,
+    cl::NullRange,
+    cl::NDRange(cl_image_ptr_1->getImageInfo<CL_IMAGE_WIDTH>(),
+                cl_image_ptr_1->getImageInfo<CL_IMAGE_HEIGHT>()),
+    cl::NullRange,
+    NULL, NULL
+  );
   queue.enqueueReleaseGLObjects(&gl_image, NULL, &event);
 
+  // adjust frame rate
   frame_count++;
   current_time = glutGet(GLUT_ELAPSED_TIME);
   time_interval = current_time - previous_time;
-  if (time_interval > 500) {
-    fps = frame_count / (time_interval / 1000.0f);
-
-    std::vector<cl::Memory> gl_residual{*cl_g_residual_ptr};
-    queue.enqueueAcquireGLObjects(&gl_residual);
-    calculate_residual.setArg<cl::Image2D>(1, *cl_image_ptr_1);
-    calculate_residual.setArg<cl::Image2D>(2, *cl_res_ptr);
-    calculate_residual.setArg<cl::Image2DGL>(3, *cl_g_residual_ptr);
-    queue.enqueueNDRangeKernel(
-      calculate_residual,
-      cl::NullRange,
-      cl::NDRange(cl_image_ptr_1->getImageInfo<CL_IMAGE_WIDTH>(),
-                  cl_image_ptr_1->getImageInfo<CL_IMAGE_HEIGHT>()),
-      cl::NullRange,
-      NULL, NULL
-    );
-    queue.enqueueReleaseGLObjects(&gl_residual, NULL, &event);
-    event.wait();
-
-    glBindTexture(GL_TEXTURE_2D, g_residual);
-    average = image_average();
-    // average = std::vector<float>();
-    // if (cl_g_residual_ptr)
-    //   delete cl_g_residual_ptr;
-    // cl_g_residual_ptr = new cl::Image2DGL(context, CL_MEM_WRITE_ONLY,
-    //                                   GL_TEXTURE_2D, 0, g_residual);
-
+  if (time_interval > 200) {
+    fps = float(frame_count) / (float(time_interval) / 1000.0f);
     std::cerr << "FPS: " << fps << " "
               << "iterations: " << number_iterations << " "
               << "avg: ";
@@ -160,10 +154,10 @@ void display() {
                   [] (float a) { std::cout << a << " "; });
     std::cout << std::endl;
 
-    if (fps >= wanted_fps + 0.1f) {
-      number_iterations += fps - wanted_fps + 0.25f;
-    } else if (fps <= wanted_fps - 0.1f) {
-      number_iterations -= wanted_fps - fps + 0.25f;
+    if (fps >= wanted_fps) {
+      number_iterations += fps - wanted_fps;
+    } else {
+      number_iterations -= wanted_fps - fps;
     }
     if (number_iterations < 10) number_iterations = 10;
     previous_time = current_time;
@@ -186,10 +180,9 @@ int main(int argc, char* argv[]) {
   glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);
   glutInitWindowSize(source.cols, source.rows);
   glutInitWindowPosition(100, 100);
-  glutCreateWindow("A basic OpenGL Window");
+  glutCreateWindow("Poissonviz");
   glutDisplayFunc(display);
   glutIdleFunc(display);
-  // glutReshapeFunc(reshape);
 
   GLenum err = glewInit();
   if (err != GLEW_OK) {
@@ -205,7 +198,7 @@ int main(int argc, char* argv[]) {
 
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluOrtho2D(-1, 1, -1, 1);
+  glOrtho(0, source.cols, 0, source.rows, 0.5, 100);
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
 
@@ -245,22 +238,6 @@ int main(int argc, char* argv[]) {
   cl_image_ptr_2 = &cl_x2;
   cl_res_ptr = &cl_res;
 
-  cl::Event event;
-  // cl::Kernel reset_image(program, "reset_image", NULL);
-  // std::vector<cl::Memory> gl_residual{*cl_g_residual_ptr};
-  // queue.enqueueAcquireGLObjects(&gl_residual);
-  // reset_image.setArg<cl::Image2DGL>(0, *cl_g_residual_ptr);
-  // queue.enqueueNDRangeKernel(
-  //   reset_image,
-  //   cl::NullRange,
-  //   cl::NDRange(cl_g_residual_ptr->getImageInfo<CL_IMAGE_WIDTH>(),
-  //               cl_g_residual_ptr->getImageInfo<CL_IMAGE_HEIGHT>()),
-  //   cl::NullRange,
-  //   NULL, NULL
-  // );
-  // queue.enqueueReleaseGLObjects(&gl_residual, NULL, &event);
-  // event.wait();
-
   cl::size_t<3> origin;
   origin.push_back(0);
   origin.push_back(0);
@@ -293,7 +270,6 @@ int main(int argc, char* argv[]) {
                                            size_t(source.rows)),
                                cl::NullRange,
                                NULL, &event);
-    event.wait();
 
     jacobi = cl::Kernel(program, "jacobi", NULL);
     jacobi.setArg<cl::Image2D>(0, cl_b);

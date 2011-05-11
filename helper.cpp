@@ -131,6 +131,7 @@ cv::Mat make_rgba(const cv::Mat& image, cv::Mat alpha = cv::Mat()) {
   return with_alpha;
 }
 
+// FIXME: Doesn't work for GPU/flipped images
 void save_cl_image(std::string filename,
                    cl::CommandQueue const& queue,
                    cl::Image2D const& cl_image) {
