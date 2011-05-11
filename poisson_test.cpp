@@ -224,7 +224,6 @@ cl::Image2D cl_target;
 cl::Image2D cl_b;
 
 void setup_new_system(bool initialize) {
-  cl::Event ev;
   setup_system.setArg<cl::Image2D>(0, cl_source);
   setup_system.setArg<cl::Image2D>(1, cl_target);
   setup_system.setArg<cl::Image2D>(2, cl_b);
@@ -239,9 +238,8 @@ void setup_new_system(bool initialize) {
     cl::NDRange(cl_source.getImageInfo<CL_IMAGE_WIDTH>(),
                 cl_source.getImageInfo<CL_IMAGE_HEIGHT>()),
     cl::NullRange,
-    NULL, &ev
+    NULL, NULL
   );
-  ev.wait();
 }
 
 int main(int argc, char* argv[]) {
