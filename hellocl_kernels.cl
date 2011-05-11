@@ -105,6 +105,10 @@ kernel void jacobi(read_only image2d_t b,
 
   float4 sigma = read_imagef(b, sampler, coord);
   uchar a_val = sigma.w;
+  uchar a = a_val & 0x0F;
+  if (a == 1) {
+    return;
+  }
   sigma.w = 255.0f;
   if (a_val & (1 << 7)) {
     sigma += read_imagef(x_in, sampler, coord + (int2)( 0,  1));
@@ -119,7 +123,8 @@ kernel void jacobi(read_only image2d_t b,
     sigma += read_imagef(x_in, sampler, coord + (int2)( 1,  0));
   }
 
-  float4 result = sigma / (a_val & 0x0F);
+  float4 result = sigma / a;
+  result.w = 255.0f;
   if (write_to_image) {
     write_imagef(render, coord, result / 255.0f);
   }
@@ -137,6 +142,10 @@ kernel void calculate_residual(read_only image2d_t b,
 
   float4 sigma = read_imagef(b, sampler, coord);
   uchar a_val = sigma.w;
+  uchar a = a_val & 0x0F;
+  if (a == 1) {
+    return;
+  }
   if (a_val & (1 << 7)) {
     sigma += read_imagef(x, sampler, coord + (int2)( 0,  1));
   }
@@ -149,9 +158,10 @@ kernel void calculate_residual(read_only image2d_t b,
   if (a_val & (1 << 4)) {
     sigma += read_imagef(x, sampler, coord + (int2)( 1,  0));
   }
-  sigma -= (a_val & 0x0F) * read_imagef(x, sampler, coord);
+  sigma -= a * read_imagef(x, sampler, coord);
+  sigma = sigma * sigma * 1024.0f;
   sigma.w = 0.0f;
-  write_imagef(gpu_abs, coord, sigma * sigma * 1024.0f);
+  write_imagef(gpu_abs, coord, sigma);
 #ifdef FIX_BROKEN_IMAGE_WRITING
   coord.x = coord.x * 2;
 #endif

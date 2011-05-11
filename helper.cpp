@@ -100,7 +100,7 @@ cl::Program load_program(const cl::Context& context,
 }
 
 GLuint load_texture(cv::Mat image, int width = -1, int height = -1) {
-  std::vector<uint8_t> data(width * height * 4, 255);
+  std::vector<uint8_t> data(width * height * 4, 0);
   GLuint texture;
 
   glGenTextures(1, &texture); //generate the texture with the loaded data

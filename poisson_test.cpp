@@ -47,19 +47,38 @@ std::vector<float> image_average() {
 }
 
 void square() {
-  glBindTexture(GL_TEXTURE_2D, g_residual);
-  glBegin(GL_QUADS);
-  glTexCoord2d(0.0, 0.0); glVertex2d(-1.0, -1.0);
-  glTexCoord2d(1.0, 0.0); glVertex2d( 1.0, -1.0);
-  glTexCoord2d(1.0, 1.0); glVertex2d( 1.0,  1.0);
-  glTexCoord2d(0.0, 1.0); glVertex2d(-1.0,  1.0);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+  glDisable(GL_TEXTURE_2D);
+  glColor4f(1.0f, 0.0f, 1.0f, 1.0f);
+  glBegin(GL_TRIANGLES);
+  glVertex3d(-1.0, -1.0, -0.1);
+  glVertex3d( 1.0, -1.0, -0.1);
+  glVertex3d( 1.0,  1.0, -0.1);
   glEnd();
+
+  glEnable(GL_TEXTURE_2D);
+  glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
   glBindTexture(GL_TEXTURE_2D, g_texture);
   glBegin(GL_QUADS);
-  glTexCoord2d(0.0, 0.0); glVertex2d(-1.0, -1.0);
-  glTexCoord2d(1.0, 0.0); glVertex2d( 1.0, -1.0);
-  glTexCoord2d(1.0, 1.0); glVertex2d( 1.0,  1.0);
-  glTexCoord2d(0.0, 1.0); glVertex2d(-1.0,  1.0);
+  glTexCoord2d(0.0, 0.0); glVertex3d(-1.0, -1.0, 0.0);
+  glTexCoord2d(1.0, 0.0); glVertex3d( 1.0, -1.0, 0.0);
+  glTexCoord2d(1.0, 1.0); glVertex3d( 1.0,  1.0, 0.0);
+  glTexCoord2d(0.0, 1.0); glVertex3d(-1.0,  1.0, 0.0);
+  glEnd();
+
+
+  glBlendFunc(GL_ONE, GL_ONE);
+
+  glBindTexture(GL_TEXTURE_2D, g_residual);
+  glBegin(GL_QUADS);
+  glTexCoord2d(0.0, 0.0); glVertex3d(-1.0, -1.0, 0.1);
+  glTexCoord2d(1.0, 0.0); glVertex3d( 1.0, -1.0, 0.1);
+  glTexCoord2d(1.0, 1.0); glVertex3d( 1.0,  1.0, 0.1);
+  glTexCoord2d(0.0, 1.0); glVertex3d(-1.0,  1.0, 0.1);
   glEnd();
 }
 
@@ -102,7 +121,6 @@ void display() {
     std::swap(cl_image_ptr_1, cl_image_ptr_2);
   }
   queue.enqueueReleaseGLObjects(&gl_image, NULL, &event);
-  queue.flush();
 
   frame_count++;
   current_time = glutGet(GLUT_ELAPSED_TIME);
@@ -147,6 +165,7 @@ void display() {
     } else if (fps <= wanted_fps - 0.1f) {
       number_iterations -= wanted_fps - fps + 0.25f;
     }
+    if (number_iterations < 10) number_iterations = 10;
     previous_time = current_time;
     frame_count = 0;
   }
@@ -164,7 +183,7 @@ int main(int argc, char* argv[]) {
 
   // Init OpenGL
   glutInit(&argc, argv);
-  glutInitDisplayMode(GLUT_DOUBLE);
+  glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);
   glutInitWindowSize(source.cols, source.rows);
   glutInitWindowPosition(100, 100);
   glutCreateWindow("A basic OpenGL Window");
@@ -181,14 +200,17 @@ int main(int argc, char* argv[]) {
             << glewGetString(GLEW_VERSION) << std::endl;
 
   glClearColor(0.0, 0.0, 0.0, 1.0);
-  glClear(GL_COLOR_BUFFER_BIT);
+  glEnable(GL_BLEND);
+  glEnable(GL_DEPTH_TEST);
+
+  glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  glEnable(GL_TEXTURE_2D);
-  gluLookAt(0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+  gluOrtho2D(-1, 1, -1, 1);
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+
   g_texture = load_texture(cv::Mat(), source.cols, source.rows);
   g_residual = load_texture(cv::Mat(), source.cols, source.rows);
-  glBindTexture(GL_TEXTURE_2D, g_texture);
-
 
   // Init OpenCL
   init_cl(context, queue);
