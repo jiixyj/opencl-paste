@@ -37,6 +37,7 @@ void init_cl(cl::Context& context,
     }
     std::vector<cl::Device> devices(context.getInfo<CL_CONTEXT_DEVICES>());
     queue = cl::CommandQueue(context, devices[0], CL_QUEUE_PROFILING_ENABLE);
+    // std::cerr << devices[0].getInfo<CL_DEVICE_EXTENSIONS>() << std::endl;
   } catch (cl::Error error) {
     std::cerr << "ERROR: "
               << error.what()
