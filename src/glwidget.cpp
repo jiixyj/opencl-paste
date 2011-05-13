@@ -7,11 +7,15 @@
 GLWidget::GLWidget(QWidget* _parent, pv::Context* context)
           : QGLWidget(_parent),
             context_(context),
-            width(512),
-            height(512),
+            width(0),
+            height(0),
             min_width(0),
             min_height(0),
-            button_pressed(false) {
+            button_pressed(false),
+            old_pos_x(),
+            old_pos_y() {
+  connect(&idle_timer, SIGNAL(timeout()), this, SLOT(updateGL()));
+  idle_timer.start(0);
 }
 
 GLWidget::~GLWidget() {
@@ -48,13 +52,12 @@ void GLWidget::set_images() {
   min_width = min_height = 0;
   updateGeometry();
 
-  timer.start();
+  frame_time.start();
 }
 
 void GLWidget::paintGL() {
   static double number_iterations = 10.0;
   static size_t frame_count = 0;
-  static int current_time;
   static int time_interval;
   static float fps;
   static float wanted_fps = 30.0f;
@@ -65,7 +68,7 @@ void GLWidget::paintGL() {
   context_->start_calculation_async(number_iterations);
 
   frame_count++;
-  time_interval = timer.elapsed();
+  time_interval = frame_time.elapsed();
   if (time_interval > 200) {
     fps = float(frame_count) / (float(time_interval) / 1000.0f);
     std::cerr << "FPS: " << fps << " "
@@ -82,13 +85,12 @@ void GLWidget::paintGL() {
       number_iterations -= wanted_fps - fps;
     }
     if (number_iterations < 10) number_iterations = 10;
-    timer.restart();
+    frame_time.restart();
     frame_count = 0;
   }
 }
 
 void GLWidget::resizeGL(int width, int height) {
-  glFinish();
   glViewport(0, 0, (GLint) width, (GLint) height);
 }
 

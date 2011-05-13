@@ -28,7 +28,8 @@ class GLWidget : public QGLWidget {
   void mouseMoveEvent(QMouseEvent* mevent);
 
  private:
-  QTime timer;
+  QTimer idle_timer;
+  QTime frame_time;
   int old_x, old_y, old_pos_x, old_pos_y;
   int button_pressed;
 };

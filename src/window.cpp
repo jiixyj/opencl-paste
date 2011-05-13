@@ -10,9 +10,6 @@ Window::Window()
   main_layout->addWidget(gl_widget_);
   setLayout(main_layout);
   setWindowTitle(tr("Hello GL"));
-  QTimer* timer = new QTimer();
-  timer->start(0);
-  connect(timer, SIGNAL(timeout()), gl_widget_, SLOT(updateGL()));
 }
 
 void Window::set_images() {
