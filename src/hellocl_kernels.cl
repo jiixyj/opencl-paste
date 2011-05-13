@@ -148,6 +148,7 @@ kernel void calculate_residual(read_only image2d_t b,
   uchar a_val = sigma.w;
   uchar a = a_val & 0x0F;
   if (a == 1) {
+    write_imagef(res, coord, 0.0f);
     return;
   }
   if (a_val & (1 << 7)) {
@@ -193,18 +194,18 @@ kernel void bilinear_filter(read_only image2d_t source,
 
 kernel void reduce(read_only image2d_t buffer,
                    const int length,
-                   local float4* scratch,
-                   global float4* result) {
+                   local float* scratch,
+                   global float* result) {
   int global_index = get_global_id(0);
   int2 size = get_image_dim(buffer);
-  float4 accumulator = (float4)(0.0f);
+  float accumulator = 0.0f;
 
   // Loop sequentially over chunks of input vector
   while (global_index < length) {
     float4 element = read_imagef(buffer, sampler,
                                          (int2)(global_index % size.x,
                                                 global_index / size.x));
-    accumulator += element;
+    accumulator += dot(element, 1.0f);
     global_index += get_global_size(0);
   }
 
@@ -217,14 +218,13 @@ kernel void reduce(read_only image2d_t buffer,
       offset > 0;
       offset = offset / 2) {
     if (local_index < offset) {
-      float4 other = scratch[local_index + offset];
-      float4 mine = scratch[local_index];
+      float other = scratch[local_index + offset];
+      float mine = scratch[local_index];
       scratch[local_index] = other + mine;
     }
     barrier(CLK_LOCAL_MEM_FENCE);
   }
   if (local_index == 0) {
     result[get_group_id(0)] = scratch[0];
-    // result[get_group_id(0)] = (float4)(0.0f, 0.1f, 0.2f, 0.3f);
   }
 }

@@ -63,7 +63,7 @@ void GLWidget::paintGL() {
   static float wanted_fps = 30.0f;
 
   context_->wait_for_calculations();
-  std::vector<float> average = context_->get_residual_average();
+  float average = context_->get_residual_average();
   context_->draw_frame();
   context_->start_calculation_async(number_iterations);
 
@@ -73,11 +73,7 @@ void GLWidget::paintGL() {
     fps = float(frame_count) / (float(time_interval) / 1000.0f);
     std::cerr << "FPS: " << fps << " "
               << "iterations: " << number_iterations << " "
-              << "avg: ";
-    std::for_each(average.begin(),
-                  average.end(),
-                  [] (float a) { std::cout << a << " "; });
-    std::cout << std::endl;
+              << "avg: " << average << std::endl;
 
     if (fps >= wanted_fps) {
       number_iterations += fps - wanted_fps;

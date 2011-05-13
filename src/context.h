@@ -21,7 +21,7 @@ class Context {
 
   void start_calculation_async(double number_iterations);
   void wait_for_calculations();
-  std::vector<float> get_residual_average();
+  float get_residual_average();
   std::pair<int, int> get_gl_size();
 
   void draw_frame();
@@ -51,6 +51,7 @@ class Context {
   cl::Kernel jacobi;
   cl::Kernel calculate_residual;
   cl::Kernel setup_system;
+  cl::Kernel reset_image;
   cl::Kernel reduce;
   cl::Image2D cl_source;
   cl::Image2D cl_target;
@@ -67,7 +68,6 @@ class Context {
   GLuint load_texture(cv::Mat image, int width = -1, int height = -1);
   cv::Mat make_rgba(const cv::Mat& image, cv::Mat alpha = cv::Mat());
   cl::Program load_program(std::string program_name);
-  std::vector<float> image_average();
 };
 
 }
