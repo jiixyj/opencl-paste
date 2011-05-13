@@ -1,6 +1,7 @@
-project(OpenCL CXX)
-cmake_minimum_required(VERSION 2.6.4)
+project(OpenCL)
+cmake_minimum_required(VERSION 2.8.0)
 set(CMAKE_MODULE_PATH ${OpenCL_SOURCE_DIR}/cmake)
+set(EXECUTABLE_OUTPUT_PATH ${OpenCL_BINARY_DIR})
 include_directories(SYSTEM include)
 
 ##### OpenCV
@@ -10,11 +11,18 @@ include_directories(SYSTEM ${OpenCV_INCLUDE_DIRS})
 ##### OpenCL
 find_package(OpenCL REQUIRED)
 include_directories(SYSTEM ${OPENCL_INCLUDE_DIRS})
-# link_directories("/home/jan/usr/AMD-APP-SDK-v2.4-lnx64/include")
-# link_directories("/home/jan/usr/AMD-APP-SDK-v2.4-lnx64/lib/x86_64")
+
+##### Qt
+find_package(Qt4 COMPONENTS QtGui QtOpenGL REQUIRED)
+include(${QT_USE_FILE})
+include_directories(SYSTEM
+  ${QT_INCLUDE_DIR}
+  ${QT_QTGUI_INCLUDE_DIR}
+  ${QT_QTOPENGL_INCLUDE_DIR}
+)
 
 ########## Compiler setup
-if("${CMAKE_VERSION}" STRGREATER "2.7.9" AND NOT CMAKE_BUILD_TYPE)
+if(NOT CMAKE_BUILD_TYPE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY VALUE "Release")
 endif()
 
