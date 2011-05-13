@@ -10,7 +10,8 @@ GLWidget::GLWidget(QWidget* _parent, pv::Context* context)
             width(512),
             height(512),
             min_width(0),
-            min_height(0) {
+            min_height(0),
+            button_pressed(false) {
 }
 
 GLWidget::~GLWidget() {
@@ -87,11 +88,36 @@ void GLWidget::paintGL() {
 }
 
 void GLWidget::resizeGL(int width, int height) {
+  glFinish();
   glViewport(0, 0, (GLint) width, (GLint) height);
 }
 
-void GLWidget::mousePressEvent(QMouseEvent *event) {
+void GLWidget::mousePressEvent(QMouseEvent* mevent) {
+  switch (mevent->button()) {
+    case Qt::LeftButton:
+      button_pressed = true;
+      old_x = mevent->pos().x();
+      old_y = height - mevent->pos().y();
+      break;
+    default:
+      break;
+  }
 }
 
-void GLWidget::mouseMoveEvent(QMouseEvent *event) {
+void GLWidget::mouseReleaseEvent(QMouseEvent* mevent) {
+  switch (mevent->button()) {
+    case Qt::LeftButton:
+      button_pressed = false;
+      context_->get_offset(old_pos_x, old_pos_y);
+      break;
+    default:
+      break;
+  }
+}
+
+void GLWidget::mouseMoveEvent(QMouseEvent* mevent) {
+  if (button_pressed) {
+    context_->set_offset(old_pos_x + mevent->pos().x() - old_x,
+                         old_pos_y + height - mevent->pos().y() - old_y);
+  }
 }

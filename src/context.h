@@ -27,6 +27,8 @@ class Context {
   void draw_frame();
   void setup_new_system(bool initialize);
 
+  void set_offset(int off_x, int off_y);
+  void get_offset(int& off_x, int& off_y);
  private:
   cl::Context context_;
   cl::CommandQueue queue_;

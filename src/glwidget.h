@@ -23,11 +23,14 @@ class GLWidget : public QGLWidget {
   void initializeGL();
   void paintGL();
   void resizeGL(int width, int height);
-  void mousePressEvent(QMouseEvent *event);
-  void mouseMoveEvent(QMouseEvent *event);
+  void mousePressEvent(QMouseEvent* mevent);
+  void mouseReleaseEvent(QMouseEvent* mevent);
+  void mouseMoveEvent(QMouseEvent* mevent);
 
  private:
   QTime timer;
+  int old_x, old_y, old_pos_x, old_pos_y;
+  int button_pressed;
 };
 
 #endif

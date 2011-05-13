@@ -281,6 +281,17 @@ void Context::setup_new_system(bool initialize) {
   );
 }
 
+void Context::set_offset(int off_x, int off_y) {
+  pos_x = off_x;
+  pos_y = off_y;
+  setup_new_system(false);
+}
+
+void Context::get_offset(int& off_x, int& off_y) {
+  off_x = pos_x;
+  off_y = pos_y;
+}
+
 cv::Mat Context::make_rgba(const cv::Mat& image, cv::Mat alpha) {
   if (alpha.empty()) {
     alpha = cv::Mat(cv::Mat::ones(image.size(), CV_8U) * 255);
