@@ -30,7 +30,7 @@ class Context {
   void set_offset(int off_x, int off_y);
   void get_offset(int& off_x, int& off_y);
 
-  bool draw_residual;
+  void toggle_residual_drawing() { draw_residual_ = !draw_residual_; }
  private:
   cl::Context context_;
   cl::CommandQueue queue_;
@@ -61,6 +61,7 @@ class Context {
   cl::Image2D cl_residual;
   cl::Image2DGL cl_g_render;
   cl::Image2DGL cl_g_residual;
+  bool draw_residual_;
   int pos_x;
   int pos_y;
 

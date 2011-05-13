@@ -3,6 +3,8 @@
 #include <iostream>
 #include <fstream>
 #include <iterator>
+#include <numeric>
+
 #include <sys/stat.h>
 #include <GL/glx.h>
 
@@ -16,7 +18,7 @@ Context::Context()
             pos_x(0),
             pos_y(0),
             main_loop_event_(),
-            draw_residual(true) {
+            draw_residual_(false) {
   origin.push_back(0);
   origin.push_back(0);
   origin.push_back(0);
@@ -192,7 +194,7 @@ void Context::draw_frame() {
   glTexCoord2d(0.0, 1.0); glVertex3i(pos_x, pos_y + h, -9);
   glEnd();
 
-  if (draw_residual) {
+  if (draw_residual_) {
     glBlendFunc(GL_ONE, GL_ONE);
   } else {
     glBlendFunc(GL_ZERO, GL_ONE);

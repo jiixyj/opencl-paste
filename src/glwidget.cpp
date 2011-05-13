@@ -122,6 +122,6 @@ void GLWidget::mouseMoveEvent(QMouseEvent* mevent) {
 
 void GLWidget::keyPressEvent(QKeyEvent* kevent) {
   if (kevent->key() == Qt::Key_R) {
-    context_->draw_residual = !context_->draw_residual;
+    context_->toggle_residual_drawing();
   }
 }
