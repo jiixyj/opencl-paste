@@ -16,6 +16,7 @@ GLWidget::GLWidget(QWidget* _parent, pv::Context* context)
             old_pos_y() {
   connect(&idle_timer, SIGNAL(timeout()), this, SLOT(updateGL()));
   idle_timer.start(0);
+  setFocusPolicy(Qt::ClickFocus);
 }
 
 GLWidget::~GLWidget() {
@@ -32,6 +33,7 @@ QSize GLWidget::minimumSizeHint() const {
 void GLWidget::initializeGL() {
   context_->init_gl();
   context_->init_cl();
+  frame_time.start();
 }
 
 extern std::string source;
@@ -51,8 +53,6 @@ void GLWidget::set_images() {
   QCoreApplication::processEvents();
   min_width = min_height = 0;
   updateGeometry();
-
-  frame_time.start();
 }
 
 void GLWidget::paintGL() {
@@ -121,5 +121,11 @@ void GLWidget::mouseMoveEvent(QMouseEvent* mevent) {
   if (button_pressed) {
     context_->set_offset(old_pos_x + mevent->pos().x() - old_x,
                          old_pos_y + height - mevent->pos().y() - old_y);
+  }
+}
+
+void GLWidget::keyPressEvent(QKeyEvent* kevent) {
+  if (kevent->key() == Qt::Key_R) {
+    context_->draw_residual = !context_->draw_residual;
   }
 }

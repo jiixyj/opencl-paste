@@ -26,6 +26,7 @@ class GLWidget : public QGLWidget {
   void mousePressEvent(QMouseEvent* mevent);
   void mouseReleaseEvent(QMouseEvent* mevent);
   void mouseMoveEvent(QMouseEvent* mevent);
+  void keyPressEvent(QKeyEvent* kevent);
 
  private:
   QTimer idle_timer;

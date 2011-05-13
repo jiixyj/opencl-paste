@@ -181,15 +181,18 @@ void Context::draw_frame() {
   glTexCoord2d(0.0, 1.0); glVertex3i(pos_x, pos_y + h, -9);
   glEnd();
 
-  glBlendFunc(GL_ONE, GL_ONE);
+  if (draw_residual) {
+    glBlendFunc(GL_ONE, GL_ONE);
+  } else {
+    glBlendFunc(GL_ZERO, GL_ONE);
+  }
 
   glBindTexture(GL_TEXTURE_2D, g_residual);
   glBegin(GL_QUADS);
-  int residual_z = draw_residual ? -8 : -100;
-  glTexCoord2d(0.0, 0.0); glVertex3i(pos_x, pos_y, residual_z);
-  glTexCoord2d(1.0, 0.0); glVertex3i(pos_x + w, pos_y, residual_z);
-  glTexCoord2d(1.0, 1.0); glVertex3i(pos_x + w, pos_y + h, residual_z);
-  glTexCoord2d(0.0, 1.0); glVertex3i(pos_x, pos_y + h, residual_z);
+  glTexCoord2d(0.0, 0.0); glVertex3i(pos_x, pos_y, -8);
+  glTexCoord2d(1.0, 0.0); glVertex3i(pos_x + w, pos_y, -8);
+  glTexCoord2d(1.0, 1.0); glVertex3i(pos_x + w, pos_y + h, -8);
+  glTexCoord2d(0.0, 1.0); glVertex3i(pos_x, pos_y + h, -8);
   glEnd();
 }
 

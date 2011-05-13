@@ -29,6 +29,8 @@ class Context {
 
   void set_offset(int off_x, int off_y);
   void get_offset(int& off_x, int& off_y);
+
+  bool draw_residual;
  private:
   cl::Context context_;
   cl::CommandQueue queue_;
@@ -59,7 +61,6 @@ class Context {
   cl::Image2DGL cl_g_residual;
   int pos_x;
   int pos_y;
-  bool draw_residual;
 
   // helper functions
   GLuint load_texture(cv::Mat image, int width = -1, int height = -1);
