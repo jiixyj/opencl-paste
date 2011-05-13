@@ -1,9 +1,5 @@
 #pragma OPENCL EXTENSION cl_amd_printf : enable
 
-float sum(float4 in) {
-  return dot(in, (float4)(1.0f, 1.0f, 1.0f, 1.0f));
-}
-
 const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE |
                           CLK_FILTER_NEAREST |
                           CLK_ADDRESS_CLAMP_TO_EDGE;
@@ -148,7 +144,6 @@ kernel void calculate_residual(read_only image2d_t b,
   uchar a_val = sigma.w;
   uchar a = a_val & 0x0F;
   if (a == 1) {
-    write_imagef(res, coord, 0.0f);
     return;
   }
   if (a_val & (1 << 7)) {
@@ -175,6 +170,9 @@ kernel void calculate_residual(read_only image2d_t b,
 
 kernel void reset_image(write_only image2d_t out) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
+#ifdef FIX_BROKEN_IMAGE_WRITING
+  coord.x = coord.x * 2;
+#endif
   write_imagef(out, coord, 0.0f);
 }
 
@@ -205,7 +203,7 @@ kernel void reduce(read_only image2d_t buffer,
     float4 element = read_imagef(buffer, sampler,
                                          (int2)(global_index % size.x,
                                                 global_index / size.x));
-    accumulator += dot(element, 1.0f);
+    accumulator += dot(element, (float4)(1.0f));
     global_index += get_global_size(0);
   }
 

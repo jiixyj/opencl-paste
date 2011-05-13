@@ -215,7 +215,7 @@ void Context::wait_for_calculations() {
 }
 
 float Context::get_residual_average() {
-  int global_size = 128;
+  int global_size = 1024;
   int local_size = 16;
   int nr_groups = global_size / local_size;
 
@@ -242,6 +242,7 @@ float Context::get_residual_average() {
   queue_.enqueueReadBuffer(result, CL_TRUE, 0,
                            nr_groups * sizeof(cl_float), result_host);
   return std::accumulate(result_host, result_host + nr_groups, .0f) / nr_pixels;
+  // return result_host[0];
 }
 
 std::pair<int, int> Context::get_gl_size() {
