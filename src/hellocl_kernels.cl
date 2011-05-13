@@ -190,3 +190,41 @@ kernel void bilinear_filter(read_only image2d_t source,
                            (convert_float2(coord) + (float2)(0.5f)) /
                            convert_float2(get_image_dim(output))));
 }
+
+kernel void reduce(read_only image2d_t buffer,
+                   const int length,
+                   local float4* scratch,
+                   global float4* result) {
+  int global_index = get_global_id(0);
+  int2 size = get_image_dim(buffer);
+  float4 accumulator = (float4)(0.0f);
+
+  // Loop sequentially over chunks of input vector
+  while (global_index < length) {
+    float4 element = read_imagef(buffer, sampler,
+                                         (int2)(global_index % size.x,
+                                                global_index / size.x));
+    accumulator += element;
+    global_index += get_global_size(0);
+  }
+
+  // Perform parallel reduction
+  int local_index = get_local_id(0);
+  scratch[local_index] = accumulator;
+  barrier(CLK_LOCAL_MEM_FENCE);
+
+  for(int offset = get_local_size(0) / 2;
+      offset > 0;
+      offset = offset / 2) {
+    if (local_index < offset) {
+      float4 other = scratch[local_index + offset];
+      float4 mine = scratch[local_index];
+      scratch[local_index] = other + mine;
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+  }
+  if (local_index == 0) {
+    result[get_group_id(0)] = scratch[0];
+    // result[get_group_id(0)] = (float4)(0.0f, 0.1f, 0.2f, 0.3f);
+  }
+}

@@ -129,6 +129,7 @@ void Context::init_cl() {
     setup_system = cl::Kernel(program_, "setup_system", NULL);
     jacobi = cl::Kernel(program_, "jacobi", NULL);
     calculate_residual = cl::Kernel(program_, "calculate_residual", NULL);
+    reduce = cl::Kernel(program_, "reduce", NULL);
   } catch (cl::Error error) {
     std::cerr << "ERROR: "
               << error.what()
@@ -196,20 +197,38 @@ void Context::draw_frame() {
   glEnd();
 }
 
-std::vector<float> image_average() {
-  float average[4];
+std::vector<float> Context::image_average() {
+  cl::Buffer result(context_, CL_MEM_WRITE_ONLY, 100 * sizeof(cl_float4));
 
-  glGenerateMipmap(GL_TEXTURE_2D);
+  reduce.setArg<cl::Image2D>(0, cl_residual);
+  reduce.setArg<int>(1, cl_source.getImageInfo<CL_IMAGE_WIDTH>() * cl_source.getImageInfo<CL_IMAGE_HEIGHT>());
+  reduce.setArg(2, 1000 * sizeof(cl_float4), NULL);
+  reduce.setArg<cl::Buffer>(3, result);
 
-  int width, height;
-  glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
-  glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
-  int max_level = int(std::floor(std::log2(std::max(width, height))));
-  glGetTexLevelParameteriv(GL_TEXTURE_2D, max_level, GL_TEXTURE_WIDTH, &width);
-  glGetTexLevelParameteriv(GL_TEXTURE_2D, max_level, GL_TEXTURE_HEIGHT, &height);
-  assert(width == 1 && height == 1);
-  glGetTexImage(GL_TEXTURE_2D, max_level, GL_RGBA, GL_FLOAT, average);
-  return std::vector<float>(average, average + 4);
+  cl::Event ev;
+  queue_.enqueueNDRangeKernel(
+    reduce,
+    cl::NullRange,
+    cl::NDRange(100),
+    cl::NullRange,
+    NULL, &ev
+  );
+  ev.wait();
+  cl_float4 result_host[100];
+  queue_.enqueueReadBuffer(result, CL_TRUE, 0, 100 * sizeof(cl_float4), result_host);
+  return std::vector<float>(result_host[0].s, result_host[0].s + 4);
+
+  // glGenerateMipmap(GL_TEXTURE_2D);
+
+  // int width, height;
+  // glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
+  // glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
+  // int max_level = int(std::floor(std::log2(std::max(width, height))));
+  // glGetTexLevelParameteriv(GL_TEXTURE_2D, max_level, GL_TEXTURE_WIDTH, &width);
+  // glGetTexLevelParameteriv(GL_TEXTURE_2D, max_level, GL_TEXTURE_HEIGHT, &height);
+  // assert(width == 1 && height == 1);
+  // glGetTexImage(GL_TEXTURE_2D, max_level, GL_RGBA, GL_FLOAT, average);
+  // return std::vector<float>(average, average + 4);
 }
 
 void Context::wait_for_calculations() {
@@ -221,7 +240,6 @@ void Context::wait_for_calculations() {
 
 std::vector<float> Context::get_residual_average() {
   // Calculate average of residual image
-  glBindTexture(GL_TEXTURE_2D, g_residual);
   return image_average();
 }
 

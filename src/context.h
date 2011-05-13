@@ -51,6 +51,7 @@ class Context {
   cl::Kernel jacobi;
   cl::Kernel calculate_residual;
   cl::Kernel setup_system;
+  cl::Kernel reduce;
   cl::Image2D cl_source;
   cl::Image2D cl_target;
   cl::Image2D cl_b;
@@ -66,6 +67,7 @@ class Context {
   GLuint load_texture(cv::Mat image, int width = -1, int height = -1);
   cv::Mat make_rgba(const cv::Mat& image, cv::Mat alpha = cv::Mat());
   cl::Program load_program(std::string program_name);
+  std::vector<float> image_average();
 };
 
 }
