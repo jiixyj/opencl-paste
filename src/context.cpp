@@ -253,13 +253,21 @@ std::pair<int, int> Context::get_gl_size() {
   return std::make_pair(target_.cols, target_.rows);
 }
 
-void Context::start_calculation_async(double number_iterations) {
-  // Jacobi iterations
-  glFinish();
-  std::vector<cl::Memory> gl_image{cl_g_render, cl_g_residual};
-  queue_.enqueueAcquireGLObjects(&gl_image);
-  int number_iterations_int = int(number_iterations / 2 + 0.5) * 2;
-  for (int i = 0; i < number_iterations_int; ++i) {
+void Context::v_cycle() {
+  if (cl_x1.getImageInfo<CL_IMAGE_WIDTH>() == 1 &&
+      cl_x1.getImageInfo<CL_IMAGE_HEIGHT>() == 1) {
+    return;
+  }
+  push_residual_stack();
+  v_cycle();
+  pop_residual_stack();
+  for (int i = 0; i < 2; ++i) {
+    std::cerr << current_grid_
+              << " " << cl_x1.getImageInfo<CL_IMAGE_WIDTH>() << " " <<
+                        cl_x1.getImageInfo<CL_IMAGE_HEIGHT>() << std::endl;
+    std::cerr << " " << cl_b.getImageInfo<CL_IMAGE_WIDTH>() << " " <<
+                        cl_b.getImageInfo<CL_IMAGE_HEIGHT>() << std::endl;
+
     jacobi.setArg<cl::Image2D>(0, a1_stack[current_grid_]);
     jacobi.setArg<cl::Image2D>(1, a2_stack[current_grid_]);
     jacobi.setArg<cl::Image2D>(2, a3_stack[current_grid_]);
@@ -267,7 +275,7 @@ void Context::start_calculation_async(double number_iterations) {
     jacobi.setArg<cl::Image2D>(4, cl_x1);
     jacobi.setArg<cl::Image2D>(5, cl_x2);
     jacobi.setArg<cl::Image2DGL>(6, cl_g_render);
-    jacobi.setArg<int>(7, (i == number_iterations_int - 1) ?
+    jacobi.setArg<int>(7, (i == 1) ?
                             (!u_stack.empty() ? 2 : 1) : 0);
     queue_.enqueueNDRangeKernel(
       jacobi,
@@ -278,6 +286,13 @@ void Context::start_calculation_async(double number_iterations) {
     );
     std::swap(cl_x1, cl_x2);
   }
+}
+void Context::start_calculation_async(double number_iterations) {
+  // Jacobi iterations
+  glFinish();
+  std::vector<cl::Memory> gl_image{cl_g_render, cl_g_residual};
+  queue_.enqueueAcquireGLObjects(&gl_image);
+  v_cycle();
   // residual calculation
   calculate_residual.setArg<cl::Image2D>(0, a1_stack[current_grid_]);
   calculate_residual.setArg<cl::Image2D>(1, a2_stack[current_grid_]);

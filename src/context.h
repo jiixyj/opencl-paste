@@ -20,6 +20,7 @@ class Context {
   void init_gl();
   void init_cl();
 
+  void v_cycle();
   void start_calculation_async(double number_iterations);
   void wait_for_calculations();
   float get_residual_average();
