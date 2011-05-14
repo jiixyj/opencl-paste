@@ -124,8 +124,10 @@ kernel void jacobi(read_only image2d_t b,
 
   float4 result = sigma / (a_val & 0x0F);
   result.w = 255.0f;
-  if (write_to_image) {
+  if (write_to_image == 1) {
     write_imagef(render, coord, result / 255.0f);
+  } else if (write_to_image == 2) {
+    write_imagef(render, coord, result / 64.0f + 0.5f);
   }
 #ifdef FIX_BROKEN_IMAGE_WRITING
   coord.x = coord.x * 2;
@@ -158,8 +160,7 @@ kernel void calculate_residual(read_only image2d_t b,
   }
   sigma -= (a_val & 0x0F) * read_imagef(x, sampler, coord);
   sigma.w = 0.0f;
-  sigma = sigma * sigma * 1024.0f;
-  write_imagef(gpu_abs, coord, sigma);
+  write_imagef(gpu_abs, coord, sigma * sigma * 1024.0f);
 #ifdef FIX_BROKEN_IMAGE_WRITING
   coord.x = coord.x * 2;
 #endif
@@ -201,7 +202,7 @@ kernel void reduce(read_only image2d_t buffer,
     float4 element = read_imagef(buffer, sampler,
                                          (int2)(global_index % size.x,
                                                 global_index / size.x));
-    accumulator += dot(element, (float4)(1.0f));
+    accumulator += dot(element * element, (float4)(1.0f));
     global_index += get_global_size(0);
   }
 
@@ -223,4 +224,28 @@ kernel void reduce(read_only image2d_t buffer,
   if (local_index == 0) {
     result[get_group_id(0)] = scratch[0];
   }
+}
+
+kernel void copy_xyz(read_only image2d_t in,
+                     read_only image2d_t out_old,
+                     write_only image2d_t out) {
+  int2 coord = (int2)(get_global_id(0), get_global_id(1));
+  float4 in_val = read_imagef(in, sampler, coord);
+  float4 out_val = read_imagef(out_old, sampler, coord);
+  in_val.w = out_val.w;
+#ifdef FIX_BROKEN_IMAGE_WRITING
+  coord.x = coord.x * 2;
+#endif
+  write_imagef(out, coord, in_val);
+}
+
+kernel void add_images(read_only image2d_t lhs,
+                       read_only image2d_t rhs,
+                       write_only image2d_t result) {
+  int2 coord = (int2)(get_global_id(0), get_global_id(1));
+#ifdef FIX_BROKEN_IMAGE_WRITING
+  coord.x = coord.x * 2;
+#endif
+  write_imagef(result, coord, read_imagef(lhs, sampler, coord) +
+                              read_imagef(rhs, sampler, coord));
 }

@@ -121,7 +121,21 @@ void GLWidget::mouseMoveEvent(QMouseEvent* mevent) {
 }
 
 void GLWidget::keyPressEvent(QKeyEvent* kevent) {
-  if (kevent->key() == Qt::Key_R) {
-    context_->toggle_residual_drawing();
+  switch (kevent->key()) {
+    case Qt::Key_R:
+      context_->toggle_residual_drawing();
+      break;
+    case Qt::Key_P:
+      idle_timer.stop();
+      context_->wait_for_calculations();
+      context_->push_residual_stack();
+      idle_timer.start();
+      break;
+    case Qt::Key_O:
+      idle_timer.stop();
+      context_->wait_for_calculations();
+      context_->pop_residual_stack();
+      idle_timer.start();
+      break;
   }
 }

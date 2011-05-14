@@ -55,9 +55,6 @@ void Context::set_source(cv::Mat source, cv::Mat mask) {
   cl_b = cl::Image2D(context_, CL_MEM_READ_WRITE,
                          cl::ImageFormat(CL_RGBA, CL_FLOAT),
                          size_t(source_.cols), size_t(source_.rows));
-  jacobi.setArg<cl::Image2D>(0, cl_b);
-  calculate_residual.setArg<cl::Image2D>(0, cl_b);
-
   cl_x1 = cl::Image2D(context_, CL_MEM_READ_WRITE,
                    cl::ImageFormat(CL_RGBA, CL_FLOAT),
                    size_t(source_.cols), size_t(source_.rows));
@@ -79,8 +76,7 @@ void Context::set_source(cv::Mat source, cv::Mat mask) {
     cl::NullRange,
     cl::NDRange(cl_residual.getImageInfo<CL_IMAGE_WIDTH>(),
                 cl_residual.getImageInfo<CL_IMAGE_HEIGHT>()),
-    cl::NullRange,
-    NULL, NULL
+    cl::NullRange
   );
 }
 
@@ -142,6 +138,8 @@ void Context::init_cl() {
     calculate_residual = cl::Kernel(program_, "calculate_residual", NULL);
     reset_image = cl::Kernel(program_, "reset_image", NULL);
     reduce = cl::Kernel(program_, "reduce", NULL);
+    copy_xyz = cl::Kernel(program_, "copy_xyz", NULL);
+    add_images = cl::Kernel(program_, "add_images", NULL);
   } catch (cl::Error error) {
     std::cerr << "ERROR: "
               << error.what()
@@ -256,23 +254,25 @@ void Context::start_calculation_async(double number_iterations) {
   glFinish();
   std::vector<cl::Memory> gl_image{cl_g_render, cl_g_residual};
   queue_.enqueueAcquireGLObjects(&gl_image);
-  int number_iterations_int = int(number_iterations + 0.5);
+  int number_iterations_int = int(number_iterations / 2 + 0.5) * 2;
   for (int i = 0; i < number_iterations_int; ++i) {
+    jacobi.setArg<cl::Image2D>(0, cl_b);
     jacobi.setArg<cl::Image2D>(1, cl_x1);
     jacobi.setArg<cl::Image2D>(2, cl_x2);
     jacobi.setArg<cl::Image2DGL>(3, cl_g_render);
-    jacobi.setArg<int>(4, i == number_iterations_int - 1);
+    jacobi.setArg<int>(4, (i == number_iterations_int - 1) ?
+                            (!u_stack.empty() ? 2 : 1) : 0);
     queue_.enqueueNDRangeKernel(
       jacobi,
       cl::NullRange,
       cl::NDRange(cl_g_render.getImageInfo<CL_IMAGE_WIDTH>(),
                   cl_g_render.getImageInfo<CL_IMAGE_HEIGHT>()),
-      cl::NullRange,
-      NULL, NULL
+      cl::NullRange
     );
     std::swap(cl_x1, cl_x2);
   }
   // residual calculation
+  calculate_residual.setArg<cl::Image2D>(0, cl_b);
   calculate_residual.setArg<cl::Image2D>(1, cl_x1);
   calculate_residual.setArg<cl::Image2D>(2, cl_residual);
   calculate_residual.setArg<cl::Image2DGL>(3, cl_g_residual);
@@ -281,10 +281,73 @@ void Context::start_calculation_async(double number_iterations) {
     cl::NullRange,
     cl::NDRange(cl_g_render.getImageInfo<CL_IMAGE_WIDTH>(),
                 cl_g_render.getImageInfo<CL_IMAGE_HEIGHT>()),
-    cl::NullRange,
-    NULL, NULL
+    cl::NullRange
   );
   queue_.enqueueReleaseGLObjects(&gl_image, NULL, &main_loop_event_);
+}
+
+void Context::push_residual_stack() {
+  cl::Image2D old_cl_b(context_, CL_MEM_READ_WRITE,
+                       cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                       size_t(source_.cols), size_t(source_.rows));
+  cl::Image2D old_cl_x1(context_, CL_MEM_READ_WRITE,
+                        cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                        size_t(source_.cols), size_t(source_.rows));
+
+  queue_.enqueueCopyImage(cl_b, old_cl_b, origin, origin, region_source);
+  queue_.enqueueCopyImage(cl_x1, old_cl_x1, origin, origin, region_source);
+  u_stack.push(old_cl_x1);
+  f_stack.push(old_cl_b);
+  copy_xyz.setArg<cl::Image2D>(0, cl_residual);
+  copy_xyz.setArg<cl::Image2D>(1, old_cl_b);
+  copy_xyz.setArg<cl::Image2D>(2, cl_b);
+  queue_.enqueueNDRangeKernel(
+    copy_xyz,
+    cl::NullRange,
+    cl::NDRange(cl_source.getImageInfo<CL_IMAGE_WIDTH>(),
+                cl_source.getImageInfo<CL_IMAGE_HEIGHT>()),
+    cl::NullRange
+  );
+
+  cl::Event ev;
+  reset_image.setArg<cl::Image2D>(0, cl_x1);
+  queue_.enqueueNDRangeKernel(
+    reset_image,
+    cl::NullRange,
+    cl::NDRange(cl_x1.getImageInfo<CL_IMAGE_WIDTH>(),
+                cl_x1.getImageInfo<CL_IMAGE_HEIGHT>()),
+    cl::NullRange,
+    NULL, &ev
+  );
+  ev.wait();
+}
+
+void Context::pop_residual_stack() {
+  if (!u_stack.empty() && !f_stack.empty()) {
+    cl::Image2D old_cl_x1 = u_stack.top();
+    cl_b = f_stack.top();
+    u_stack.pop();
+    f_stack.pop();
+
+    cl::Image2D cl_x1_copy(context_, CL_MEM_READ_WRITE,
+                           cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                           size_t(source_.cols), size_t(source_.rows));
+    queue_.enqueueCopyImage(cl_x1, cl_x1_copy, origin, origin, region_source);
+
+    cl::Event ev;
+    add_images.setArg<cl::Image2D>(0, old_cl_x1);
+    add_images.setArg<cl::Image2D>(1, cl_x1_copy);
+    add_images.setArg<cl::Image2D>(2, cl_x1);
+    queue_.enqueueNDRangeKernel(
+      add_images,
+      cl::NullRange,
+      cl::NDRange(cl_x1.getImageInfo<CL_IMAGE_WIDTH>(),
+                  cl_x1.getImageInfo<CL_IMAGE_HEIGHT>()),
+      cl::NullRange,
+      NULL, &ev
+    );
+    ev.wait();
+  }
 }
 
 void Context::setup_new_system(bool initialize) {
@@ -301,8 +364,7 @@ void Context::setup_new_system(bool initialize) {
     cl::NullRange,
     cl::NDRange(cl_source.getImageInfo<CL_IMAGE_WIDTH>(),
                 cl_source.getImageInfo<CL_IMAGE_HEIGHT>()),
-    cl::NullRange,
-    NULL, NULL
+    cl::NullRange
   );
 }
 

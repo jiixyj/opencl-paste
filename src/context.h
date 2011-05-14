@@ -7,6 +7,7 @@
 #include <CL/cl.hpp>
 
 #include <cv.h>
+#include <stack>
 
 namespace pv {
 
@@ -26,6 +27,9 @@ class Context {
 
   void draw_frame();
   void setup_new_system(bool initialize);
+
+  void push_residual_stack();
+  void pop_residual_stack();
 
   void set_offset(int off_x, int off_y);
   void get_offset(int& off_x, int& off_y);
@@ -53,8 +57,12 @@ class Context {
   cl::Kernel setup_system;
   cl::Kernel reset_image;
   cl::Kernel reduce;
+  cl::Kernel copy_xyz;
+  cl::Kernel add_images;
   cl::Image2D cl_source;
   cl::Image2D cl_target;
+  std::stack<cl::Image2D> u_stack;
+  std::stack<cl::Image2D> f_stack;
   cl::Image2D cl_b;
   cl::Image2D cl_x1;
   cl::Image2D cl_x2;
