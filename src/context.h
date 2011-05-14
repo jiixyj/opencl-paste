@@ -36,6 +36,10 @@ class Context {
 
   void toggle_residual_drawing() { draw_residual_ = !draw_residual_; }
  private:
+  static const int X_CL_TYPE = CL_FLOAT;
+
+  void build_multigrid();
+
   cl::Context context_;
   cl::CommandQueue queue_;
   cl::Event main_loop_event_;
@@ -46,7 +50,6 @@ class Context {
   cl::size_t<3> origin;
   cl::size_t<3> region_source;
   cl::size_t<3> region_target;
-
 
   GLuint g_texture;
   GLuint g_residual;
@@ -59,8 +62,12 @@ class Context {
   cl::Kernel reduce;
   cl::Kernel copy_xyz;
   cl::Kernel add_images;
+  cl::Kernel bilinear_filter;
   cl::Image2D cl_source;
   cl::Image2D cl_target;
+  std::vector<cl::Image2D> a1_stack;
+  std::vector<cl::Image2D> a2_stack;
+  std::vector<cl::Image2D> a3_stack;
   std::stack<cl::Image2D> u_stack;
   std::stack<cl::Image2D> f_stack;
   cl::Image2D cl_a1;
@@ -73,6 +80,7 @@ class Context {
   cl::Image2DGL cl_g_render;
   cl::Image2DGL cl_g_residual;
   bool draw_residual_;
+  int current_grid_;
   int pos_x;
   int pos_y;
 

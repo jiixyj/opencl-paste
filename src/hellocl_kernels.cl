@@ -116,22 +116,23 @@ kernel void jacobi(read_only image2d_t a1,
 
   float4 a2_val = read_imagef(a2, sampler, coord);
   if (a2_val.y == 1) {
+    write_imagef(x_out, coord, read_imagef(x_in, sampler, coord));
     return;
   }
   float4 a1_val = read_imagef(a1, sampler, coord);
   float4 a3_val = read_imagef(a3, sampler, coord);
   float4 sigma = read_imagef(b, sampler, coord);
-  if (a1_val.y == -1) {
-    sigma += read_imagef(x_in, sampler, coord + (int2)( 0,  1));
+  if (a1_val.y) {
+    sigma -= a1_val.y * read_imagef(x_in, sampler, coord + (int2)( 0,  1));
   }
-  if (a2_val.x == -1) {
-    sigma += read_imagef(x_in, sampler, coord + (int2)(-1,  0));
+  if (a2_val.x) {
+    sigma -= a2_val.x * read_imagef(x_in, sampler, coord + (int2)(-1,  0));
   }
-  if (a3_val.y == -1) {
-    sigma += read_imagef(x_in, sampler, coord + (int2)( 0, -1));
+  if (a3_val.y) {
+    sigma -= a3_val.y * read_imagef(x_in, sampler, coord + (int2)( 0, -1));
   }
-  if (a2_val.z == -1) {
-    sigma += read_imagef(x_in, sampler, coord + (int2)( 1,  0));
+  if (a2_val.z) {
+    sigma -= a2_val.z * read_imagef(x_in, sampler, coord + (int2)( 1,  0));
   }
 
   float4 result = sigma / a2_val.y;
@@ -141,6 +142,7 @@ kernel void jacobi(read_only image2d_t a1,
   write_imagef(x_out, coord, result);
 #endif
   if (write_to_image == 1) {
+    result.w = 255.0f;
     write_imagef(render, coord, result / 255.0f);
   } else if (write_to_image == 2) {
     write_imagef(render, coord, result / 64.0f + 0.5f);
@@ -158,22 +160,23 @@ kernel void calculate_residual(read_only image2d_t a1,
 
   float4 a2_val = read_imagef(a2, sampler, coord);
   if (a2_val.y == 1) {
+    write_imagef(res, coord, 0.0f);
     return;
   }
   float4 a1_val = read_imagef(a1, sampler, coord);
   float4 a3_val = read_imagef(a3, sampler, coord);
   float4 sigma = read_imagef(b, sampler, coord);
-  if (a1_val.y == -1) {
-    sigma += read_imagef(x, sampler, coord + (int2)( 0,  1));
+  if (a1_val.y) {
+    sigma -= a1_val.y * read_imagef(x, sampler, coord + (int2)( 0,  1));
   }
-  if (a2_val.x == -1) {
-    sigma += read_imagef(x, sampler, coord + (int2)(-1,  0));
+  if (a2_val.x) {
+    sigma -= a2_val.x * read_imagef(x, sampler, coord + (int2)(-1,  0));
   }
-  if (a3_val.y == -1) {
-    sigma += read_imagef(x, sampler, coord + (int2)( 0, -1));
+  if (a3_val.y) {
+    sigma -= a3_val.y * read_imagef(x, sampler, coord + (int2)( 0, -1));
   }
-  if (a2_val.z == -1) {
-    sigma += read_imagef(x, sampler, coord + (int2)( 1,  0));
+  if (a2_val.z) {
+    sigma -= a2_val.z * read_imagef(x, sampler, coord + (int2)( 1,  0));
   }
 
   sigma -= a2_val.y * read_imagef(x, sampler, coord);
@@ -242,19 +245,6 @@ kernel void reduce(read_only image2d_t buffer,
   if (local_index == 0) {
     result[get_group_id(0)] = scratch[0];
   }
-}
-
-kernel void copy_xyz(read_only image2d_t in,
-                     read_only image2d_t out_old,
-                     write_only image2d_t out) {
-  int2 coord = (int2)(get_global_id(0), get_global_id(1));
-  float4 in_val = read_imagef(in, sampler, coord);
-  float4 out_val = read_imagef(out_old, sampler, coord);
-  in_val.w = out_val.w;
-#ifdef FIX_BROKEN_IMAGE_WRITING
-  coord.x = coord.x * 2;
-#endif
-  write_imagef(out, coord, in_val);
 }
 
 kernel void add_images(read_only image2d_t lhs,
