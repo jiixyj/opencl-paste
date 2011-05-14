@@ -79,12 +79,11 @@ kernel void setup_system(read_only image2d_t source,
       laplace += source_m - source_r;
     }
 
+    float4 laplacef = convert_float4(as_int4(laplace));
+    // is OK because OpenCL has two's complement
 #ifdef FIX_BROKEN_IMAGE_WRITING
     coord.x = coord.x * 2;
 #endif
-
-    float4 laplacef = convert_float4(as_int4(laplace));
-    // is OK because OpenCL has two's complement
     write_imagef(b, coord, laplacef);
     if (initialize) {
       write_imagef(x, coord, convert_float4(pixel));
@@ -116,7 +115,11 @@ kernel void jacobi(read_only image2d_t a1,
 
   float4 a2_val = read_imagef(a2, sampler, coord);
   if (a2_val.y == 1) {
+#ifdef FIX_BROKEN_IMAGE_WRITING
+    write_imagef(x_out, coord * (int2)(2, 1), read_imagef(x_in, sampler, coord));
+#else
     write_imagef(x_out, coord, read_imagef(x_in, sampler, coord));
+#endif
     return;
   }
   float4 a1_val = read_imagef(a1, sampler, coord);
@@ -160,7 +163,11 @@ kernel void calculate_residual(read_only image2d_t a1,
 
   float4 a2_val = read_imagef(a2, sampler, coord);
   if (a2_val.y == 1) {
+#ifdef FIX_BROKEN_IMAGE_WRITING
+    write_imagef(res, coord * (int2)(2, 1), 0.0f);
+#else
     write_imagef(res, coord, 0.0f);
+#endif
     return;
   }
   float4 a1_val = read_imagef(a1, sampler, coord);
@@ -204,7 +211,11 @@ kernel void bilinear_filter(read_only image2d_t source,
                                      CLK_ADDRESS_CLAMP_TO_EDGE;
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
+#ifdef FIX_BROKEN_IMAGE_WRITING
+  write_imagef(output, coord * (int2)(2, 1),
+#else
   write_imagef(output, coord,
+#endif
                read_imagef(source, bilinear_sampler,
                            (convert_float2(coord) + (float2)(0.5f)) /
                            convert_float2(get_image_dim(output))));
@@ -252,8 +263,10 @@ kernel void add_images(read_only image2d_t lhs,
                        write_only image2d_t result) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 #ifdef FIX_BROKEN_IMAGE_WRITING
-  coord.x = coord.x * 2;
+  write_imagef(result, coord * (int2)(2, 1),
+#else
+  write_imagef(result, coord,
 #endif
-  write_imagef(result, coord, read_imagef(lhs, sampler, coord) +
-                              read_imagef(rhs, sampler, coord));
+               read_imagef(lhs, sampler, coord) +
+               read_imagef(rhs, sampler, coord) * 4);
 }

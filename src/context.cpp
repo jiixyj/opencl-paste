@@ -275,7 +275,7 @@ void Context::start_calculation_async(double number_iterations) {
     jacobi.setArg<cl::Image2D>(5, cl_x2);
     jacobi.setArg<cl::Image2DGL>(6, cl_g_render);
     jacobi.setArg<int>(7, (i == number_iterations_int - 1) ?
-                            (!u_stack.empty() ? 1 : 1) : 0);
+                            (!u_stack.empty() ? 2 : 1) : 0);
     queue_.enqueueNDRangeKernel(
       jacobi,
       cl::NullRange,
