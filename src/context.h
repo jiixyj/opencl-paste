@@ -84,6 +84,9 @@ class Context {
   int pos_x;
   int pos_y;
 
+  // kernel launchers
+  void launch_reset_image(bool block, cl::Image2D image);
+
   // helper functions
   GLuint load_texture(cv::Mat image, int width = -1, int height = -1);
   cv::Mat make_rgba(const cv::Mat& image, cv::Mat alpha = cv::Mat());
