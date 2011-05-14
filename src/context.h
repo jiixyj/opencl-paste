@@ -63,6 +63,9 @@ class Context {
   cl::Image2D cl_target;
   std::stack<cl::Image2D> u_stack;
   std::stack<cl::Image2D> f_stack;
+  cl::Image2D cl_a1;
+  cl::Image2D cl_a2;
+  cl::Image2D cl_a3;
   cl::Image2D cl_b;
   cl::Image2D cl_x1;
   cl::Image2D cl_x2;

@@ -52,6 +52,15 @@ void Context::set_source(cv::Mat source, cv::Mat mask) {
   cl_source = cl::Image2D(context_, CL_MEM_READ_ONLY,
                               cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
                               size_t(source_.cols), size_t(source_.rows));
+  cl_a1 = cl::Image2D(context_, CL_MEM_READ_WRITE,
+                         cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                         size_t(source_.cols), size_t(source_.rows));
+  cl_a2 = cl::Image2D(context_, CL_MEM_READ_WRITE,
+                         cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                         size_t(source_.cols), size_t(source_.rows));
+  cl_a3 = cl::Image2D(context_, CL_MEM_READ_WRITE,
+                         cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                         size_t(source_.cols), size_t(source_.rows));
   cl_b = cl::Image2D(context_, CL_MEM_READ_WRITE,
                          cl::ImageFormat(CL_RGBA, CL_FLOAT),
                          size_t(source_.cols), size_t(source_.rows));
@@ -256,11 +265,14 @@ void Context::start_calculation_async(double number_iterations) {
   queue_.enqueueAcquireGLObjects(&gl_image);
   int number_iterations_int = int(number_iterations / 2 + 0.5) * 2;
   for (int i = 0; i < number_iterations_int; ++i) {
-    jacobi.setArg<cl::Image2D>(0, cl_b);
-    jacobi.setArg<cl::Image2D>(1, cl_x1);
-    jacobi.setArg<cl::Image2D>(2, cl_x2);
-    jacobi.setArg<cl::Image2DGL>(3, cl_g_render);
-    jacobi.setArg<int>(4, (i == number_iterations_int - 1) ?
+    jacobi.setArg<cl::Image2D>(0, cl_a1);
+    jacobi.setArg<cl::Image2D>(1, cl_a2);
+    jacobi.setArg<cl::Image2D>(2, cl_a3);
+    jacobi.setArg<cl::Image2D>(3, cl_b);
+    jacobi.setArg<cl::Image2D>(4, cl_x1);
+    jacobi.setArg<cl::Image2D>(5, cl_x2);
+    jacobi.setArg<cl::Image2DGL>(6, cl_g_render);
+    jacobi.setArg<int>(7, (i == number_iterations_int - 1) ?
                             (!u_stack.empty() ? 2 : 1) : 0);
     queue_.enqueueNDRangeKernel(
       jacobi,
@@ -272,10 +284,13 @@ void Context::start_calculation_async(double number_iterations) {
     std::swap(cl_x1, cl_x2);
   }
   // residual calculation
-  calculate_residual.setArg<cl::Image2D>(0, cl_b);
-  calculate_residual.setArg<cl::Image2D>(1, cl_x1);
-  calculate_residual.setArg<cl::Image2D>(2, cl_residual);
-  calculate_residual.setArg<cl::Image2DGL>(3, cl_g_residual);
+  calculate_residual.setArg<cl::Image2D>(0, cl_a1);
+  calculate_residual.setArg<cl::Image2D>(1, cl_a2);
+  calculate_residual.setArg<cl::Image2D>(2, cl_a3);
+  calculate_residual.setArg<cl::Image2D>(3, cl_b);
+  calculate_residual.setArg<cl::Image2D>(4, cl_x1);
+  calculate_residual.setArg<cl::Image2D>(5, cl_residual);
+  calculate_residual.setArg<cl::Image2DGL>(6, cl_g_residual);
   queue_.enqueueNDRangeKernel(
     calculate_residual,
     cl::NullRange,
@@ -353,11 +368,14 @@ void Context::pop_residual_stack() {
 void Context::setup_new_system(bool initialize) {
   setup_system.setArg<cl::Image2D>(0, cl_source);
   setup_system.setArg<cl::Image2D>(1, cl_target);
-  setup_system.setArg<cl::Image2D>(2, cl_b);
-  setup_system.setArg<cl::Image2D>(3, cl_x1);
-  setup_system.setArg<cl_int>(4, pos_x);
-  setup_system.setArg<cl_int>(5, pos_y);
-  setup_system.setArg<cl_int>(6, initialize);
+  setup_system.setArg<cl::Image2D>(2, cl_a1);
+  setup_system.setArg<cl::Image2D>(3, cl_a2);
+  setup_system.setArg<cl::Image2D>(4, cl_a3);
+  setup_system.setArg<cl::Image2D>(5, cl_b);
+  setup_system.setArg<cl::Image2D>(6, cl_x1);
+  setup_system.setArg<cl_int>(7, pos_x);
+  setup_system.setArg<cl_int>(8, pos_y);
+  setup_system.setArg<cl_int>(9, initialize);
 
   queue_.enqueueNDRangeKernel(
     setup_system,
