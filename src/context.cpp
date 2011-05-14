@@ -53,16 +53,16 @@ void Context::set_source(cv::Mat source, cv::Mat mask) {
                               cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
                               size_t(source_.cols), size_t(source_.rows));
   cl_a1 = cl::Image2D(context_, CL_MEM_READ_WRITE,
-                         cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                         cl::ImageFormat(CL_RGBA, CL_HALF_FLOAT),
                          size_t(source_.cols), size_t(source_.rows));
   cl_a2 = cl::Image2D(context_, CL_MEM_READ_WRITE,
-                         cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                         cl::ImageFormat(CL_RGBA, CL_HALF_FLOAT),
                          size_t(source_.cols), size_t(source_.rows));
   cl_a3 = cl::Image2D(context_, CL_MEM_READ_WRITE,
-                         cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                         cl::ImageFormat(CL_RGBA, CL_HALF_FLOAT),
                          size_t(source_.cols), size_t(source_.rows));
   cl_b = cl::Image2D(context_, CL_MEM_READ_WRITE,
-                         cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                         cl::ImageFormat(CL_RGBA, CL_HALF_FLOAT),
                          size_t(source_.cols), size_t(source_.rows));
   cl_x1 = cl::Image2D(context_, CL_MEM_READ_WRITE,
                    cl::ImageFormat(CL_RGBA, CL_FLOAT),
@@ -71,7 +71,7 @@ void Context::set_source(cv::Mat source, cv::Mat mask) {
                    cl::ImageFormat(CL_RGBA, CL_FLOAT),
                    size_t(source_.cols), size_t(source_.rows));
   cl_residual = cl::Image2D(context_, CL_MEM_READ_WRITE,
-                     cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                     cl::ImageFormat(CL_RGBA, CL_HALF_FLOAT),
                      size_t(source_.cols), size_t(source_.rows));
 
   region_source[0] = size_t(source_.cols);
