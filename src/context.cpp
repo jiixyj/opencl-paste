@@ -314,6 +314,7 @@ void Context::push_residual_stack() {
 
   bilinear_filter.setArg<cl::Image2D>(0, residual_stack[current_grid_ - 1]);
   bilinear_filter.setArg<cl::Image2D>(1, b_stack[current_grid_]);
+  bilinear_filter.setArg<cl_float>(2, 2.0f);
   queue_.enqueueNDRangeKernel(
     bilinear_filter,
     cl::NullRange,
@@ -337,6 +338,7 @@ void Context::pop_residual_stack() {
 
     bilinear_filter.setArg<cl::Image2D>(0, x1_stack[current_grid_ + 1]);
     bilinear_filter.setArg<cl::Image2D>(1, cl_x1_copy);
+    bilinear_filter.setArg<cl_float>(2, 1.0f);
     cl::Event ev;
     queue_.enqueueNDRangeKernel(
       bilinear_filter,
@@ -408,6 +410,7 @@ void Context::build_multigrid(bool initialize) {
       }
       bilinear_filter.setArg<cl::Image2D>(0, arr[i]->at(a1_stack.size() - 2));
       bilinear_filter.setArg<cl::Image2D>(1, arr[i]->back());
+      bilinear_filter.setArg<cl_float>(2, 1.0f);
       queue_.enqueueNDRangeKernel(bilinear_filter, cl::NullRange,
         cl::NDRange(arr[i]->back().getImageInfo<CL_IMAGE_WIDTH>(),
                     arr[i]->back().getImageInfo<CL_IMAGE_HEIGHT>()),

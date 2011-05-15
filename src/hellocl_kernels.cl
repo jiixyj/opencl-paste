@@ -196,7 +196,8 @@ kernel void reset_image(write_only image2d_t out) {
 }
 
 kernel void bilinear_filter(read_only image2d_t source,
-                            write_only image2d_t output) {
+                            write_only image2d_t output,
+                            float scaling_factor) {
 
   const sampler_t bilinear_sampler = CLK_NORMALIZED_COORDS_TRUE |
                                      CLK_FILTER_LINEAR |
@@ -210,7 +211,8 @@ kernel void bilinear_filter(read_only image2d_t source,
 #endif
                read_imagef(source, bilinear_sampler,
                            (convert_float2(coord) + (float2)(0.5f)) /
-                           convert_float2(get_image_dim(output))));
+                           convert_float2(get_image_dim(output))) *
+               scaling_factor);
 }
 
 kernel void reduce(read_only image2d_t buffer,
@@ -260,7 +262,7 @@ kernel void add_images(read_only image2d_t lhs,
     result_val = 0.0f;
   } else {
     result_val = read_imagef(lhs, sampler, coord) +
-                 read_imagef(rhs, sampler, coord) * 2;
+                 read_imagef(rhs, sampler, coord);
   }
 #ifdef FIX_BROKEN_IMAGE_WRITING
     write_imagef(result, coord * (int2)(2, 1),
