@@ -80,7 +80,7 @@ void GLWidget::paintGL() {
     } else {
       number_iterations -= wanted_fps - fps;
     }
-    if (number_iterations < 10) number_iterations = 10;
+    if (number_iterations < 4) number_iterations = 4;
     frame_time.restart();
     frame_count = 0;
   }

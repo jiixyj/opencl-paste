@@ -253,11 +253,8 @@ std::pair<int, int> Context::get_gl_size() {
   return std::make_pair(target_.cols, target_.rows);
 }
 
-void Context::v_cycle() {
-  if (current_grid_ == x1_stack.size() - 1) {
-    return;
-  }
-  for (int i = 0; i < (current_grid_ != 0 ? 2 : 2); ++i) {
+void Context::jacobi_iterations(int iterations) {
+  for (int i = 0; i < iterations; ++i) {
     jacobi.setArg<cl::Image2D>(0, a1_stack[current_grid_]);
     jacobi.setArg<cl::Image2D>(1, a2_stack[current_grid_]);
     jacobi.setArg<cl::Image2D>(2, a3_stack[current_grid_]);
@@ -265,8 +262,8 @@ void Context::v_cycle() {
     jacobi.setArg<cl::Image2D>(4, x1_stack[current_grid_]);
     jacobi.setArg<cl::Image2D>(5, x2_stack[current_grid_]);
     jacobi.setArg<cl::Image2DGL>(6, cl_g_render);
-    jacobi.setArg<int>(7, (i == 1) ?
-                            (current_grid_ > 0 ? 2 : 1) : 0);
+    jacobi.setArg<int>(7, (i == iterations - 1) ?
+                            (current_grid_ > 0 ? 0 : 1) : 0);
     queue_.enqueueNDRangeKernel(
       jacobi,
       cl::NullRange,
@@ -277,45 +274,6 @@ void Context::v_cycle() {
     std::swap(x1_stack[current_grid_], x2_stack[current_grid_]);
   }
   // residual calculation
-  std::cerr << current_grid_ << std::endl;
-  calculate_residual.setArg<cl::Image2D>(0, a1_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2D>(1, a2_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2D>(2, a3_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2D>(3, b_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2D>(4, x1_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2D>(5, residual_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2DGL>(6, cl_g_residual);
-  queue_.enqueueNDRangeKernel(
-    calculate_residual,
-    cl::NullRange,
-    cl::NDRange(x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>(),
-                x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>()),
-    cl::NullRange
-  );
-  push_residual_stack();
-  v_cycle();
-  pop_residual_stack();
-  for (int i = 0; i < 10; ++i) {
-    jacobi.setArg<cl::Image2D>(0, a1_stack[current_grid_]);
-    jacobi.setArg<cl::Image2D>(1, a2_stack[current_grid_]);
-    jacobi.setArg<cl::Image2D>(2, a3_stack[current_grid_]);
-    jacobi.setArg<cl::Image2D>(3, b_stack[current_grid_]);
-    jacobi.setArg<cl::Image2D>(4, x1_stack[current_grid_]);
-    jacobi.setArg<cl::Image2D>(5, x2_stack[current_grid_]);
-    jacobi.setArg<cl::Image2DGL>(6, cl_g_render);
-    jacobi.setArg<int>(7, (i == 1) ?
-                            (current_grid_ > 0 ? 2 : 1) : 0);
-    queue_.enqueueNDRangeKernel(
-      jacobi,
-      cl::NullRange,
-      cl::NDRange(x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>(),
-                  x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>()),
-      cl::NullRange
-    );
-    std::swap(x1_stack[current_grid_], x2_stack[current_grid_]);
-  }
-  // residual calculation
-  std::cerr << current_grid_ << std::endl;
   calculate_residual.setArg<cl::Image2D>(0, a1_stack[current_grid_]);
   calculate_residual.setArg<cl::Image2D>(1, a2_stack[current_grid_]);
   calculate_residual.setArg<cl::Image2D>(2, a3_stack[current_grid_]);
@@ -331,12 +289,23 @@ void Context::v_cycle() {
     cl::NullRange
   );
 }
+
+void Context::v_cycle(double number_iterations) {
+  if (current_grid_ == x1_stack.size() - 1) {
+    return;
+  }
+  jacobi_iterations(2);
+  push_residual_stack();
+  v_cycle(number_iterations);
+  pop_residual_stack();
+  jacobi_iterations(int(number_iterations / 2.0 + 0.5) * 2);
+}
 void Context::start_calculation_async(double number_iterations) {
   // Jacobi iterations
   glFinish();
   std::vector<cl::Memory> gl_image{cl_g_render, cl_g_residual};
   queue_.enqueueAcquireGLObjects(&gl_image);
-  v_cycle();
+  v_cycle(number_iterations);
   queue_.enqueueReleaseGLObjects(&gl_image, NULL, &main_loop_event_);
 }
 
@@ -353,9 +322,8 @@ void Context::push_residual_stack() {
     cl::NullRange
   );
   launch_reset_image(false, residual_stack[current_grid_]);
-
   launch_reset_image(false, x1_stack[current_grid_]);
-  launch_reset_image(true,  x2_stack[current_grid_]);
+  launch_reset_image(false, x2_stack[current_grid_]);
 }
 
 void Context::pop_residual_stack() {
@@ -377,7 +345,6 @@ void Context::pop_residual_stack() {
                   cl_x1_copy.getImageInfo<CL_IMAGE_HEIGHT>()),
       cl::NullRange
     );
-    launch_reset_image(false, residual_stack[current_grid_]);
 
     cl::Image2D cl_current_x1_copy(context_, CL_MEM_READ_WRITE,
                         cl::ImageFormat(CL_RGBA, X_CL_TYPE),
@@ -398,10 +365,8 @@ void Context::pop_residual_stack() {
       cl::NullRange,
       cl::NDRange(x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>(),
                   x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>()),
-      cl::NullRange,
-      NULL, &ev
+      cl::NullRange
     );
-    ev.wait();
   }
 }
 
@@ -416,7 +381,6 @@ void Context::build_multigrid() {
   x2_stack.resize(1);
   residual_stack.resize(1);
   while (current_height != 1 && current_width != 1) {
-    std::cerr << b_stack.size() << std::endl;
     current_width = (current_width + 1) / 2;
     current_height = (current_height + 1) / 2;
     b_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
