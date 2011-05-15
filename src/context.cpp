@@ -104,7 +104,7 @@ void Context::set_target(cv::Mat target) {
   glMatrixMode(GL_MODELVIEW);
 
   setup_new_system(true);
-  build_multigrid();
+  build_multigrid(true);
 }
 
 void Context::init_cl() {
@@ -370,36 +370,42 @@ void Context::pop_residual_stack() {
   }
 }
 
-void Context::build_multigrid() {
+void Context::build_multigrid(bool initialize) {
   int current_width = a1_stack[0].getImageInfo<CL_IMAGE_WIDTH>();
   int current_height = a1_stack[0].getImageInfo<CL_IMAGE_HEIGHT>();
-  a1_stack.resize(1);
-  a2_stack.resize(1);
-  a3_stack.resize(1);
-  b_stack.resize(1);
-  x1_stack.resize(1);
-  x2_stack.resize(1);
-  residual_stack.resize(1);
+  if (initialize) {
+    a1_stack.resize(1);
+    a2_stack.resize(1);
+    a3_stack.resize(1);
+    b_stack.resize(1);
+    x1_stack.resize(1);
+    x2_stack.resize(1);
+    residual_stack.resize(1);
+  }
   while (current_height != 1 && current_width != 1) {
     current_width = (current_width + 1) / 2;
     current_height = (current_height + 1) / 2;
-    b_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                      cl::ImageFormat(CL_RGBA, CL_FLOAT),
-                      current_width, current_height));
-    x1_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                       cl::ImageFormat(CL_RGBA, X_CL_TYPE),
-                       current_width, current_height));
-    x2_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                       cl::ImageFormat(CL_RGBA, X_CL_TYPE),
-                       current_width, current_height));
-    residual_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                             cl::ImageFormat(CL_RGBA, CL_FLOAT),
-                             current_width, current_height));
-    std::vector<cl::Image2D>* arr[3] = {&a1_stack, &a2_stack, &a3_stack};
-    for (int i = 0; i < 3; ++i) {
-      arr[i]->push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
+    if (initialize) {
+      b_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
                         cl::ImageFormat(CL_RGBA, CL_FLOAT),
                         current_width, current_height));
+      x1_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
+                         cl::ImageFormat(CL_RGBA, X_CL_TYPE),
+                         current_width, current_height));
+      x2_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
+                         cl::ImageFormat(CL_RGBA, X_CL_TYPE),
+                         current_width, current_height));
+      residual_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
+                               cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                               current_width, current_height));
+    }
+    std::vector<cl::Image2D>* arr[3] = {&a1_stack, &a2_stack, &a3_stack};
+    for (int i = 0; i < 3; ++i) {
+      if (initialize) {
+        arr[i]->push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
+                          cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                          current_width, current_height));
+      }
       bilinear_filter.setArg<cl::Image2D>(0, arr[i]->at(a1_stack.size() - 2));
       bilinear_filter.setArg<cl::Image2D>(1, arr[i]->back());
       queue_.enqueueNDRangeKernel(bilinear_filter, cl::NullRange,
@@ -452,7 +458,7 @@ void Context::set_offset(int off_x, int off_y) {
   pos_x = off_x;
   pos_y = off_y;
   setup_new_system(false);
-  build_multigrid();
+  build_multigrid(false);
 }
 
 void Context::get_offset(int& off_x, int& off_y) {

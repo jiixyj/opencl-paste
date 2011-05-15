@@ -40,7 +40,7 @@ class Context {
  private:
   static const int X_CL_TYPE = CL_FLOAT;
 
-  void build_multigrid();
+  void build_multigrid(bool initialize);
 
   cl::Context context_;
   cl::CommandQueue queue_;
