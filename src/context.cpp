@@ -143,7 +143,8 @@ void Context::init_cl() {
     reset_image = cl::Kernel(program_, "reset_image", NULL);
     reduce = cl::Kernel(program_, "reduce", NULL);
     add_images = cl::Kernel(program_, "add_images", NULL);
-    bilinear_filter = cl::Kernel(program_, "bilinear_filter", NULL);
+    bilinear_interp = cl::Kernel(program_, "bilinear_interp", NULL);
+    bilinear_restrict = cl::Kernel(program_, "bilinear_restrict", NULL);
   } catch (cl::Error error) {
     std::cerr << "ERROR: "
               << error.what()
@@ -312,11 +313,10 @@ void Context::start_calculation_async(double number_iterations) {
 void Context::push_residual_stack() {
   ++current_grid_;
 
-  bilinear_filter.setArg<cl::Image2D>(0, residual_stack[current_grid_ - 1]);
-  bilinear_filter.setArg<cl::Image2D>(1, b_stack[current_grid_]);
-  bilinear_filter.setArg<cl_float>(2, 2.0f);
+  bilinear_restrict.setArg<cl::Image2D>(0, residual_stack[current_grid_ - 1]);
+  bilinear_restrict.setArg<cl::Image2D>(1, b_stack[current_grid_]);
   queue_.enqueueNDRangeKernel(
-    bilinear_filter,
+    bilinear_restrict,
     cl::NullRange,
     cl::NDRange(b_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>(),
                 b_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>()),
@@ -336,12 +336,11 @@ void Context::pop_residual_stack() {
                            x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>(),
                            x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>());
 
-    bilinear_filter.setArg<cl::Image2D>(0, x1_stack[current_grid_ + 1]);
-    bilinear_filter.setArg<cl::Image2D>(1, cl_x1_copy);
-    bilinear_filter.setArg<cl_float>(2, 1.0f);
+    bilinear_interp.setArg<cl::Image2D>(0, x1_stack[current_grid_ + 1]);
+    bilinear_interp.setArg<cl::Image2D>(1, cl_x1_copy);
     cl::Event ev;
     queue_.enqueueNDRangeKernel(
-      bilinear_filter,
+      bilinear_interp,
       cl::NullRange,
       cl::NDRange(cl_x1_copy.getImageInfo<CL_IMAGE_WIDTH>(),
                   cl_x1_copy.getImageInfo<CL_IMAGE_HEIGHT>()),
@@ -408,10 +407,9 @@ void Context::build_multigrid(bool initialize) {
                           cl::ImageFormat(CL_RGBA, CL_FLOAT),
                           current_width, current_height));
       }
-      bilinear_filter.setArg<cl::Image2D>(0, arr[i]->at(a1_stack.size() - 2));
-      bilinear_filter.setArg<cl::Image2D>(1, arr[i]->back());
-      bilinear_filter.setArg<cl_float>(2, 1.0f);
-      queue_.enqueueNDRangeKernel(bilinear_filter, cl::NullRange,
+      bilinear_interp.setArg<cl::Image2D>(0, arr[i]->at(a1_stack.size() - 2));
+      bilinear_interp.setArg<cl::Image2D>(1, arr[i]->back());
+      queue_.enqueueNDRangeKernel(bilinear_interp, cl::NullRange,
         cl::NDRange(arr[i]->back().getImageInfo<CL_IMAGE_WIDTH>(),
                     arr[i]->back().getImageInfo<CL_IMAGE_HEIGHT>()),
         cl::NullRange

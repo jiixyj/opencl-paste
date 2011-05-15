@@ -86,8 +86,8 @@ kernel void setup_system(read_only image2d_t source,
 #endif
     write_imagef(b, coord, laplacef);
     if (initialize) {
-      write_imagef(x, coord, convert_float4(pixel));
-      // write_imagef(x, coord, 0.0f);
+      // write_imagef(x, coord, convert_float4(pixel));
+      write_imagef(x, coord, 0.0f);
     }
   } else {
     uint4 tmp = read_imageui(target, sampler, coord + (int2)(ox, oy));
@@ -97,8 +97,8 @@ kernel void setup_system(read_only image2d_t source,
     coord.x = coord.x * 2;
 #endif
     write_imagef(b, coord, tmpf);
-    write_imagef(x, coord, tmpf);
-    // write_imagef(x, coord, 0.0f);
+    // write_imagef(x, coord, tmpf);
+    write_imagef(x, coord, 0.0f);
   }
   write_imagef(a1, coord, a1_val);
   write_imagef(a2, coord, a2_val);
@@ -180,7 +180,7 @@ kernel void calculate_residual(read_only image2d_t a1,
 
   sigma -= a2_val.y * read_imagef(x, sampler, coord);
   sigma.w = 0.0f;
-  write_imagef(gpu_abs, coord, sigma * sigma);
+  write_imagef(gpu_abs, coord, sigma * sigma * 128.0f);
 #ifdef FIX_BROKEN_IMAGE_WRITING
   coord.x = coord.x * 2;
 #endif
@@ -195,9 +195,8 @@ kernel void reset_image(write_only image2d_t out) {
   write_imagef(out, coord, 0.0f);
 }
 
-kernel void bilinear_filter(read_only image2d_t source,
-                            write_only image2d_t output,
-                            float scaling_factor) {
+kernel void bilinear_interp(read_only image2d_t source,
+                            write_only image2d_t output) {
 
   const sampler_t bilinear_sampler = CLK_NORMALIZED_COORDS_TRUE |
                                      CLK_FILTER_LINEAR |
@@ -211,8 +210,35 @@ kernel void bilinear_filter(read_only image2d_t source,
 #endif
                read_imagef(source, bilinear_sampler,
                            (convert_float2(coord) + (float2)(0.5f)) /
-                           convert_float2(get_image_dim(output))) *
-               scaling_factor);
+                           convert_float2(get_image_dim(output))));
+}
+
+kernel void bilinear_restrict(read_only image2d_t source,
+                              write_only image2d_t output) {
+
+  const sampler_t bilinear_sampler = CLK_NORMALIZED_COORDS_TRUE |
+                                     CLK_FILTER_LINEAR |
+                                     CLK_ADDRESS_CLAMP_TO_EDGE;
+  int2 coord = (int2)(get_global_id(0), get_global_id(1));
+
+#ifdef FIX_BROKEN_IMAGE_WRITING
+  write_imagef(output, coord * (int2)(2, 1),
+#else
+  write_imagef(output, coord,
+#endif
+              (read_imagef(source, bilinear_sampler,
+                           (convert_float2(coord)) /
+                           convert_float2(get_image_dim(output)))
+             + read_imagef(source, bilinear_sampler,
+                           (convert_float2(coord) + (float2)(1.0f, 0.0f)) /
+                           convert_float2(get_image_dim(output)))
+             + read_imagef(source, bilinear_sampler,
+                           (convert_float2(coord) + (float2)(0.0f, 1.0f)) /
+                           convert_float2(get_image_dim(output)))
+             + read_imagef(source, bilinear_sampler,
+                           (convert_float2(coord) + (float2)(1.0f, 1.0f)) /
+                           convert_float2(get_image_dim(output)))
+                         ) / 2.0f);
 }
 
 kernel void reduce(read_only image2d_t buffer,

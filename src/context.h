@@ -64,7 +64,8 @@ class Context {
   cl::Kernel reduce;
   cl::Kernel copy_xyz;
   cl::Kernel add_images;
-  cl::Kernel bilinear_filter;
+  cl::Kernel bilinear_interp;
+  cl::Kernel bilinear_restrict;
   cl::Image2D cl_source;
   cl::Image2D cl_target;
   std::vector<cl::Image2D> a1_stack;
