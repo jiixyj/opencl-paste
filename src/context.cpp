@@ -294,7 +294,7 @@ void Context::v_cycle(double number_iterations) {
   if (current_grid_ == x1_stack.size() - 1) {
     return;
   }
-  jacobi_iterations(2);
+  jacobi_iterations(int(number_iterations / 2.0 + 0.5) * 2);
   push_residual_stack();
   v_cycle(number_iterations);
   pop_residual_stack();

@@ -86,8 +86,8 @@ kernel void setup_system(read_only image2d_t source,
 #endif
     write_imagef(b, coord, laplacef);
     if (initialize) {
-      // write_imagef(x, coord, convert_float4(pixel));
-      write_imagef(x, coord, 0.0f);
+      write_imagef(x, coord, convert_float4(pixel));
+      // write_imagef(x, coord, 0.0f);
     }
   } else {
     uint4 tmp = read_imageui(target, sampler, coord + (int2)(ox, oy));
@@ -97,8 +97,8 @@ kernel void setup_system(read_only image2d_t source,
     coord.x = coord.x * 2;
 #endif
     write_imagef(b, coord, tmpf);
-    // write_imagef(x, coord, tmpf);
-    write_imagef(x, coord, 0.0f);
+    write_imagef(x, coord, tmpf);
+    // write_imagef(x, coord, 0.0f);
   }
   write_imagef(a1, coord, a1_val);
   write_imagef(a2, coord, a2_val);
@@ -180,7 +180,7 @@ kernel void calculate_residual(read_only image2d_t a1,
 
   sigma -= a2_val.y * read_imagef(x, sampler, coord);
   sigma.w = 0.0f;
-  write_imagef(gpu_abs, coord, sigma * sigma * 128.0f);
+  write_imagef(gpu_abs, coord, sigma * sigma);
 #ifdef FIX_BROKEN_IMAGE_WRITING
   coord.x = coord.x * 2;
 #endif
