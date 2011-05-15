@@ -54,33 +54,33 @@ void Context::set_source(cv::Mat source, cv::Mat mask) {
                               cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
                               size_t(source_.cols), size_t(source_.rows));
   a1_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                     cl::ImageFormat(CL_RGBA, CL_HALF_FLOAT),
+                     cl::ImageFormat(CL_RGBA, CL_FLOAT),
                      size_t(source_.cols), size_t(source_.rows)));
   a2_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                     cl::ImageFormat(CL_RGBA, CL_HALF_FLOAT),
+                     cl::ImageFormat(CL_RGBA, CL_FLOAT),
                      size_t(source_.cols), size_t(source_.rows)));
   a3_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                     cl::ImageFormat(CL_RGBA, CL_HALF_FLOAT),
+                     cl::ImageFormat(CL_RGBA, CL_FLOAT),
                      size_t(source_.cols), size_t(source_.rows)));
-  cl_b = cl::Image2D(context_, CL_MEM_READ_WRITE,
-                     cl::ImageFormat(CL_RGBA, CL_HALF_FLOAT),
-                     size_t(source_.cols), size_t(source_.rows));
-  cl_x1 = cl::Image2D(context_, CL_MEM_READ_WRITE,
+  b_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
+                     cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                     size_t(source_.cols), size_t(source_.rows)));
+  x1_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
                    cl::ImageFormat(CL_RGBA, X_CL_TYPE),
-                   size_t(source_.cols), size_t(source_.rows));
-  cl_x2 = cl::Image2D(context_, CL_MEM_READ_WRITE,
+                   size_t(source_.cols), size_t(source_.rows)));
+  x2_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
                    cl::ImageFormat(CL_RGBA, X_CL_TYPE),
-                   size_t(source_.cols), size_t(source_.rows));
-  cl_residual = cl::Image2D(context_, CL_MEM_READ_WRITE,
+                   size_t(source_.cols), size_t(source_.rows)));
+  residual_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
                      cl::ImageFormat(CL_RGBA, X_CL_TYPE),
-                     size_t(source_.cols), size_t(source_.rows));
+                     size_t(source_.cols), size_t(source_.rows)));
 
   region_source[0] = size_t(source_.cols);
   region_source[1] = size_t(source_.rows);
   queue_.enqueueWriteImage(cl_source, CL_TRUE,
                            origin, region_source, 0, 0,
                            source_.data);
-  launch_reset_image(true, cl_residual);
+  launch_reset_image(true, residual_stack[0]);
 }
 
 void Context::set_target(cv::Mat target) {
@@ -223,12 +223,12 @@ float Context::get_residual_average() {
   int local_size = 16;
   int nr_groups = global_size / local_size;
 
-  int nr_pixels = int(cl_source.getImageInfo<CL_IMAGE_WIDTH>()) *
-                  int(cl_source.getImageInfo<CL_IMAGE_HEIGHT>());
+  int nr_pixels = int(residual_stack[0].getImageInfo<CL_IMAGE_WIDTH>()) *
+                  int(residual_stack[0].getImageInfo<CL_IMAGE_HEIGHT>());
 
   cl::Buffer result(context_, CL_MEM_WRITE_ONLY, nr_groups * sizeof(cl_float));
 
-  reduce.setArg<cl::Image2D>(0, cl_residual);
+  reduce.setArg<cl::Image2D>(0, residual_stack[0]);
   reduce.setArg<int>(1, nr_pixels);
   reduce.setArg(2, local_size * sizeof(cl_float), NULL);
   reduce.setArg<cl::Buffer>(3, result);
@@ -254,38 +254,82 @@ std::pair<int, int> Context::get_gl_size() {
 }
 
 void Context::v_cycle() {
-  if (cl_x1.getImageInfo<CL_IMAGE_WIDTH>() == 1 &&
-      cl_x1.getImageInfo<CL_IMAGE_HEIGHT>() == 1) {
+  if (current_grid_ == x1_stack.size() - 1) {
     return;
   }
-  push_residual_stack();
-  v_cycle();
-  pop_residual_stack();
-  for (int i = 0; i < 2; ++i) {
-    std::cerr << current_grid_
-              << " " << cl_x1.getImageInfo<CL_IMAGE_WIDTH>() << " " <<
-                        cl_x1.getImageInfo<CL_IMAGE_HEIGHT>() << std::endl;
-    std::cerr << " " << cl_b.getImageInfo<CL_IMAGE_WIDTH>() << " " <<
-                        cl_b.getImageInfo<CL_IMAGE_HEIGHT>() << std::endl;
-
+  for (int i = 0; i < (current_grid_ != 0 ? 2 : 2); ++i) {
     jacobi.setArg<cl::Image2D>(0, a1_stack[current_grid_]);
     jacobi.setArg<cl::Image2D>(1, a2_stack[current_grid_]);
     jacobi.setArg<cl::Image2D>(2, a3_stack[current_grid_]);
-    jacobi.setArg<cl::Image2D>(3, cl_b);
-    jacobi.setArg<cl::Image2D>(4, cl_x1);
-    jacobi.setArg<cl::Image2D>(5, cl_x2);
+    jacobi.setArg<cl::Image2D>(3, b_stack[current_grid_]);
+    jacobi.setArg<cl::Image2D>(4, x1_stack[current_grid_]);
+    jacobi.setArg<cl::Image2D>(5, x2_stack[current_grid_]);
     jacobi.setArg<cl::Image2DGL>(6, cl_g_render);
     jacobi.setArg<int>(7, (i == 1) ?
-                            (!u_stack.empty() ? 2 : 1) : 0);
+                            (current_grid_ > 0 ? 2 : 1) : 0);
     queue_.enqueueNDRangeKernel(
       jacobi,
       cl::NullRange,
-      cl::NDRange(cl_x1.getImageInfo<CL_IMAGE_WIDTH>(),
-                  cl_x1.getImageInfo<CL_IMAGE_HEIGHT>()),
+      cl::NDRange(x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>(),
+                  x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>()),
       cl::NullRange
     );
-    std::swap(cl_x1, cl_x2);
+    std::swap(x1_stack[current_grid_], x2_stack[current_grid_]);
   }
+  // residual calculation
+  std::cerr << current_grid_ << std::endl;
+  calculate_residual.setArg<cl::Image2D>(0, a1_stack[current_grid_]);
+  calculate_residual.setArg<cl::Image2D>(1, a2_stack[current_grid_]);
+  calculate_residual.setArg<cl::Image2D>(2, a3_stack[current_grid_]);
+  calculate_residual.setArg<cl::Image2D>(3, b_stack[current_grid_]);
+  calculate_residual.setArg<cl::Image2D>(4, x1_stack[current_grid_]);
+  calculate_residual.setArg<cl::Image2D>(5, residual_stack[current_grid_]);
+  calculate_residual.setArg<cl::Image2DGL>(6, cl_g_residual);
+  queue_.enqueueNDRangeKernel(
+    calculate_residual,
+    cl::NullRange,
+    cl::NDRange(x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>(),
+                x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>()),
+    cl::NullRange
+  );
+  push_residual_stack();
+  v_cycle();
+  pop_residual_stack();
+  for (int i = 0; i < 10; ++i) {
+    jacobi.setArg<cl::Image2D>(0, a1_stack[current_grid_]);
+    jacobi.setArg<cl::Image2D>(1, a2_stack[current_grid_]);
+    jacobi.setArg<cl::Image2D>(2, a3_stack[current_grid_]);
+    jacobi.setArg<cl::Image2D>(3, b_stack[current_grid_]);
+    jacobi.setArg<cl::Image2D>(4, x1_stack[current_grid_]);
+    jacobi.setArg<cl::Image2D>(5, x2_stack[current_grid_]);
+    jacobi.setArg<cl::Image2DGL>(6, cl_g_render);
+    jacobi.setArg<int>(7, (i == 1) ?
+                            (current_grid_ > 0 ? 2 : 1) : 0);
+    queue_.enqueueNDRangeKernel(
+      jacobi,
+      cl::NullRange,
+      cl::NDRange(x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>(),
+                  x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>()),
+      cl::NullRange
+    );
+    std::swap(x1_stack[current_grid_], x2_stack[current_grid_]);
+  }
+  // residual calculation
+  std::cerr << current_grid_ << std::endl;
+  calculate_residual.setArg<cl::Image2D>(0, a1_stack[current_grid_]);
+  calculate_residual.setArg<cl::Image2D>(1, a2_stack[current_grid_]);
+  calculate_residual.setArg<cl::Image2D>(2, a3_stack[current_grid_]);
+  calculate_residual.setArg<cl::Image2D>(3, b_stack[current_grid_]);
+  calculate_residual.setArg<cl::Image2D>(4, x1_stack[current_grid_]);
+  calculate_residual.setArg<cl::Image2D>(5, residual_stack[current_grid_]);
+  calculate_residual.setArg<cl::Image2DGL>(6, cl_g_residual);
+  queue_.enqueueNDRangeKernel(
+    calculate_residual,
+    cl::NullRange,
+    cl::NDRange(x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>(),
+                x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>()),
+    cl::NullRange
+  );
 }
 void Context::start_calculation_async(double number_iterations) {
   // Jacobi iterations
@@ -293,80 +337,37 @@ void Context::start_calculation_async(double number_iterations) {
   std::vector<cl::Memory> gl_image{cl_g_render, cl_g_residual};
   queue_.enqueueAcquireGLObjects(&gl_image);
   v_cycle();
-  // residual calculation
-  calculate_residual.setArg<cl::Image2D>(0, a1_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2D>(1, a2_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2D>(2, a3_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2D>(3, cl_b);
-  calculate_residual.setArg<cl::Image2D>(4, cl_x1);
-  calculate_residual.setArg<cl::Image2D>(5, cl_residual);
-  calculate_residual.setArg<cl::Image2DGL>(6, cl_g_residual);
-  queue_.enqueueNDRangeKernel(
-    calculate_residual,
-    cl::NullRange,
-    cl::NDRange(cl_x1.getImageInfo<CL_IMAGE_WIDTH>(),
-                cl_x1.getImageInfo<CL_IMAGE_HEIGHT>()),
-    cl::NullRange
-  );
   queue_.enqueueReleaseGLObjects(&gl_image, NULL, &main_loop_event_);
 }
 
 void Context::push_residual_stack() {
   ++current_grid_;
-  u_stack.push(cl_x1);
-  f_stack.push(cl_b);
 
-  cl_b = cl::Image2D(context_, CL_MEM_READ_WRITE,
-                     cl::ImageFormat(CL_RGBA, CL_HALF_FLOAT),
-                     (cl_b.getImageInfo<CL_IMAGE_WIDTH>() + 1) / 2,
-                     (cl_b.getImageInfo<CL_IMAGE_HEIGHT>() + 1) / 2);
-  bilinear_filter.setArg<cl::Image2D>(0, cl_residual);
-  bilinear_filter.setArg<cl::Image2D>(1, cl_b);
+  bilinear_filter.setArg<cl::Image2D>(0, residual_stack[current_grid_ - 1]);
+  bilinear_filter.setArg<cl::Image2D>(1, b_stack[current_grid_]);
   queue_.enqueueNDRangeKernel(
     bilinear_filter,
     cl::NullRange,
-    cl::NDRange(cl_b.getImageInfo<CL_IMAGE_WIDTH>(),
-                cl_b.getImageInfo<CL_IMAGE_HEIGHT>()),
+    cl::NDRange(b_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>(),
+                b_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>()),
     cl::NullRange
   );
-  cl_residual = cl::Image2D(context_, CL_MEM_READ_WRITE,
-                            cl::ImageFormat(CL_RGBA, X_CL_TYPE),
-                            cl_b.getImageInfo<CL_IMAGE_WIDTH>(),
-                            cl_b.getImageInfo<CL_IMAGE_HEIGHT>());
-  launch_reset_image(false, cl_residual);
+  launch_reset_image(false, residual_stack[current_grid_]);
 
-  cl::Event ev;
-  cl_x1 = cl::Image2D(context_, CL_MEM_READ_WRITE,
-                      cl::ImageFormat(CL_RGBA, X_CL_TYPE),
-                      (cl_x1.getImageInfo<CL_IMAGE_WIDTH>() + 1) / 2,
-                      (cl_x1.getImageInfo<CL_IMAGE_HEIGHT>() + 1) / 2);
-  cl_x2 = cl::Image2D(context_, CL_MEM_READ_WRITE,
-                      cl::ImageFormat(CL_RGBA, X_CL_TYPE),
-                      cl_x1.getImageInfo<CL_IMAGE_WIDTH>(),
-                      cl_x1.getImageInfo<CL_IMAGE_HEIGHT>());
-  launch_reset_image(false, cl_x1);
-  launch_reset_image(true, cl_x2);
+  launch_reset_image(false, x1_stack[current_grid_]);
+  launch_reset_image(true,  x2_stack[current_grid_]);
 }
 
 void Context::pop_residual_stack() {
-  if (!u_stack.empty() && !f_stack.empty()) {
+  if (current_grid_ > 0) {
     --current_grid_;
-    cl::Image2D old_cl_x1 = u_stack.top();
-    cl_b = f_stack.top();
-    u_stack.pop();
-    f_stack.pop();
 
     cl::Image2D cl_x1_copy(context_, CL_MEM_READ_WRITE,
                            cl::ImageFormat(CL_RGBA, X_CL_TYPE),
-                           old_cl_x1.getImageInfo<CL_IMAGE_WIDTH>(),
-                           old_cl_x1.getImageInfo<CL_IMAGE_HEIGHT>());
-    cl_residual = cl::Image2D(context_, CL_MEM_READ_WRITE,
-                              cl::ImageFormat(CL_RGBA, X_CL_TYPE),
-                              cl_b.getImageInfo<CL_IMAGE_WIDTH>(),
-                              cl_b.getImageInfo<CL_IMAGE_HEIGHT>());
-    launch_reset_image(false, cl_residual);
+                           x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>(),
+                           x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>());
 
-    bilinear_filter.setArg<cl::Image2D>(0, cl_x1);
+    bilinear_filter.setArg<cl::Image2D>(0, x1_stack[current_grid_ + 1]);
     bilinear_filter.setArg<cl::Image2D>(1, cl_x1_copy);
     cl::Event ev;
     queue_.enqueueNDRangeKernel(
@@ -376,25 +377,27 @@ void Context::pop_residual_stack() {
                   cl_x1_copy.getImageInfo<CL_IMAGE_HEIGHT>()),
       cl::NullRange
     );
+    launch_reset_image(false, residual_stack[current_grid_]);
 
-    cl_x1 = cl::Image2D(context_, CL_MEM_READ_WRITE,
+    cl::Image2D cl_current_x1_copy(context_, CL_MEM_READ_WRITE,
                         cl::ImageFormat(CL_RGBA, X_CL_TYPE),
-                        old_cl_x1.getImageInfo<CL_IMAGE_WIDTH>(),
-                        old_cl_x1.getImageInfo<CL_IMAGE_HEIGHT>());
-    cl_x2 = cl::Image2D(context_, CL_MEM_READ_WRITE,
-                        cl::ImageFormat(CL_RGBA, X_CL_TYPE),
-                        cl_x1.getImageInfo<CL_IMAGE_WIDTH>(),
-                        cl_x1.getImageInfo<CL_IMAGE_HEIGHT>());
-    launch_reset_image(false, cl_x2);
-    add_images.setArg<cl::Image2D>(0, old_cl_x1);
+                        x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>(),
+                        x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>());
+    cl::size_t<3> size;
+    size.push_back(x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>());
+    size.push_back(x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>());
+    size.push_back(1);
+    queue_.enqueueCopyImage(x1_stack[current_grid_], cl_current_x1_copy, origin, origin, size);
+
+    add_images.setArg<cl::Image2D>(0, cl_current_x1_copy);
     add_images.setArg<cl::Image2D>(1, cl_x1_copy);
     add_images.setArg<cl::Image2D>(2, a2_stack[current_grid_]);
-    add_images.setArg<cl::Image2D>(3, cl_x1);
+    add_images.setArg<cl::Image2D>(3, x1_stack[current_grid_]);
     queue_.enqueueNDRangeKernel(
       add_images,
       cl::NullRange,
-      cl::NDRange(cl_x1.getImageInfo<CL_IMAGE_WIDTH>(),
-                  cl_x1.getImageInfo<CL_IMAGE_HEIGHT>()),
+      cl::NDRange(x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>(),
+                  x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>()),
       cl::NullRange,
       NULL, &ev
     );
@@ -408,13 +411,30 @@ void Context::build_multigrid() {
   a1_stack.resize(1);
   a2_stack.resize(1);
   a3_stack.resize(1);
+  b_stack.resize(1);
+  x1_stack.resize(1);
+  x2_stack.resize(1);
+  residual_stack.resize(1);
   while (current_height != 1 && current_width != 1) {
+    std::cerr << b_stack.size() << std::endl;
     current_width = (current_width + 1) / 2;
     current_height = (current_height + 1) / 2;
+    b_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
+                      cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                      current_width, current_height));
+    x1_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
+                       cl::ImageFormat(CL_RGBA, X_CL_TYPE),
+                       current_width, current_height));
+    x2_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
+                       cl::ImageFormat(CL_RGBA, X_CL_TYPE),
+                       current_width, current_height));
+    residual_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
+                             cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                             current_width, current_height));
     std::vector<cl::Image2D>* arr[3] = {&a1_stack, &a2_stack, &a3_stack};
     for (int i = 0; i < 3; ++i) {
       arr[i]->push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                        cl::ImageFormat(CL_RGBA, CL_HALF_FLOAT),
+                        cl::ImageFormat(CL_RGBA, CL_FLOAT),
                         current_width, current_height));
       bilinear_filter.setArg<cl::Image2D>(0, arr[i]->at(a1_stack.size() - 2));
       bilinear_filter.setArg<cl::Image2D>(1, arr[i]->back());
@@ -433,8 +453,8 @@ void Context::setup_new_system(bool initialize) {
   setup_system.setArg<cl::Image2D>(2, a1_stack[0]);
   setup_system.setArg<cl::Image2D>(3, a2_stack[0]);
   setup_system.setArg<cl::Image2D>(4, a3_stack[0]);
-  setup_system.setArg<cl::Image2D>(5, cl_b);
-  setup_system.setArg<cl::Image2D>(6, cl_x1);
+  setup_system.setArg<cl::Image2D>(5, b_stack[0]);
+  setup_system.setArg<cl::Image2D>(6, x1_stack[0]);
   setup_system.setArg<cl_int>(7, pos_x);
   setup_system.setArg<cl_int>(8, pos_y);
   setup_system.setArg<cl_int>(9, initialize);

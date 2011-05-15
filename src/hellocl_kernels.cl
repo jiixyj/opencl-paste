@@ -87,6 +87,7 @@ kernel void setup_system(read_only image2d_t source,
     write_imagef(b, coord, laplacef);
     if (initialize) {
       write_imagef(x, coord, convert_float4(pixel));
+      // write_imagef(x, coord, 0.0f);
     }
   } else {
     uint4 tmp = read_imageui(target, sampler, coord + (int2)(ox, oy));
@@ -97,6 +98,7 @@ kernel void setup_system(read_only image2d_t source,
 #endif
     write_imagef(b, coord, tmpf);
     write_imagef(x, coord, tmpf);
+    // write_imagef(x, coord, 0.0f);
   }
   write_imagef(a1, coord, a1_val);
   write_imagef(a2, coord, a2_val);
@@ -258,7 +260,7 @@ kernel void add_images(read_only image2d_t lhs,
     result_val = 0.0f;
   } else {
     result_val = read_imagef(lhs, sampler, coord) +
-                 read_imagef(rhs, sampler, coord) * 4;
+                 read_imagef(rhs, sampler, coord) * 2;
   }
 #ifdef FIX_BROKEN_IMAGE_WRITING
     write_imagef(result, coord * (int2)(2, 1),
