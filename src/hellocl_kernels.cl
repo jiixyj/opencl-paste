@@ -39,19 +39,11 @@ kernel void setup_system(read_only image2d_t source,
     bool d_s = target_d.w;
     bool r_s = target_r.w;
 
-    a2_val.y = u_s + l_s + d_s + r_s;
-    if (u_o && u_s) {
-      a1_val.y = -1;
-    }
-    if (l_o && l_s) {
-      a2_val.x = -1;
-    }
-    if (d_o && d_s) {
-      a3_val.y = -1;
-    }
-    if (r_o && r_s) {
-      a2_val.z = -1;
-    }
+    a2_val.y =  4.0f;
+    a1_val.y = -1.0f;
+    a2_val.x = -1.0f;
+    a3_val.y = -1.0f;
+    a2_val.z = -1.0f;
 
     uint4 laplace = (uint4)(0);
     if (!u_o && u_s) {
@@ -86,18 +78,9 @@ kernel void setup_system(read_only image2d_t source,
 #endif
     write_imagef(b, coord, laplacef);
     if (initialize) {
-      // write_imagef(x, coord, convert_float4(pixel));
-      write_imagef(x, coord, 0.0f);
+      write_imagef(x, coord, convert_float4(pixel));
+      // write_imagef(x, coord, 0.0f);
     }
-  } else {
-    uint4 tmp = read_imageui(target, sampler, coord + (int2)(ox, oy));
-    float4 tmpf = convert_float4(tmp);
-#ifdef FIX_BROKEN_IMAGE_WRITING
-    coord.x = coord.x * 2;
-#endif
-    write_imagef(b, coord, tmpf);
-    // write_imagef(x, coord, tmpf);
-    write_imagef(x, coord, 0.0f);
   }
   write_imagef(a1, coord, a1_val);
   write_imagef(a2, coord, a2_val);
@@ -121,18 +104,10 @@ kernel void jacobi(read_only image2d_t a1,
   float4 a1_val = read_imagef(a1, sampler, coord);
   float4 a3_val = read_imagef(a3, sampler, coord);
   float4 sigma = read_imagef(b, sampler, coord);
-  if (a1_val.y) {
-    sigma -= a1_val.y * read_imagef(x_in, sampler, coord + (int2)( 0,  1));
-  }
-  if (a2_val.x) {
-    sigma -= a2_val.x * read_imagef(x_in, sampler, coord + (int2)(-1,  0));
-  }
-  if (a3_val.y) {
-    sigma -= a3_val.y * read_imagef(x_in, sampler, coord + (int2)( 0, -1));
-  }
-  if (a2_val.z) {
-    sigma -= a2_val.z * read_imagef(x_in, sampler, coord + (int2)( 1,  0));
-  }
+  sigma -= a1_val.y * read_imagef(x_in, sampler, coord + (int2)( 0,  1));
+  sigma -= a2_val.x * read_imagef(x_in, sampler, coord + (int2)(-1,  0));
+  sigma -= a3_val.y * read_imagef(x_in, sampler, coord + (int2)( 0, -1));
+  sigma -= a2_val.z * read_imagef(x_in, sampler, coord + (int2)( 1,  0));
 
   float4 result = sigma / a2_val.y;
 #ifdef FIX_BROKEN_IMAGE_WRITING
@@ -164,18 +139,10 @@ kernel void calculate_residual(read_only image2d_t a1,
   float4 a1_val = read_imagef(a1, sampler, coord);
   float4 a3_val = read_imagef(a3, sampler, coord);
   float4 sigma = read_imagef(b, sampler, coord);
-  if (a1_val.y) {
-    sigma -= a1_val.y * read_imagef(x, sampler, coord + (int2)( 0,  1));
-  }
-  if (a2_val.x) {
-    sigma -= a2_val.x * read_imagef(x, sampler, coord + (int2)(-1,  0));
-  }
-  if (a3_val.y) {
-    sigma -= a3_val.y * read_imagef(x, sampler, coord + (int2)( 0, -1));
-  }
-  if (a2_val.z) {
-    sigma -= a2_val.z * read_imagef(x, sampler, coord + (int2)( 1,  0));
-  }
+  sigma -= a1_val.y * read_imagef(x, sampler, coord + (int2)( 0,  1));
+  sigma -= a2_val.x * read_imagef(x, sampler, coord + (int2)(-1,  0));
+  sigma -= a3_val.y * read_imagef(x, sampler, coord + (int2)( 0, -1));
+  sigma -= a2_val.z * read_imagef(x, sampler, coord + (int2)( 1,  0));
 
   sigma -= a2_val.y * read_imagef(x, sampler, coord);
   sigma.w = 0.0f;
@@ -194,12 +161,18 @@ kernel void reset_image(write_only image2d_t out) {
   write_imagef(out, coord, 0.0f);
 }
 
-kernel void bilinear_interp(read_only image2d_t source,
-                            write_only image2d_t output) {
 
-  const sampler_t bilinear_sampler = CLK_NORMALIZED_COORDS_TRUE |
-                                     CLK_FILTER_LINEAR |
-                                     CLK_ADDRESS_CLAMP_TO_EDGE;
+
+const sampler_t bilinear_sampler = CLK_NORMALIZED_COORDS_TRUE |
+                                   CLK_FILTER_LINEAR |
+                                   CLK_ADDRESS_CLAMP_TO_EDGE;
+const sampler_t nearest_sampler = CLK_NORMALIZED_COORDS_TRUE |
+                                  CLK_FILTER_NEAREST |
+                                  CLK_ADDRESS_CLAMP_TO_EDGE;
+
+kernel void interp(read_only image2d_t source,
+                   write_only image2d_t output,
+                   int bilinear) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
 #ifdef FIX_BROKEN_IMAGE_WRITING
@@ -207,17 +180,14 @@ kernel void bilinear_interp(read_only image2d_t source,
 #else
   write_imagef(output, coord,
 #endif
-               read_imagef(source, bilinear_sampler,
-                           (convert_float2(coord) + (float2)(0.5f)) /
-                           convert_float2(get_image_dim(output))));
+    read_imagef(source, bilinear ? bilinear_sampler : nearest_sampler,
+                (convert_float2(coord) + (float2)(0.5f)) /
+                convert_float2(get_image_dim(output))));
 }
 
 kernel void bilinear_restrict(read_only image2d_t source,
                               write_only image2d_t output) {
 
-  const sampler_t bilinear_sampler = CLK_NORMALIZED_COORDS_TRUE |
-                                     CLK_FILTER_LINEAR |
-                                     CLK_ADDRESS_CLAMP_TO_EDGE;
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
 #ifdef FIX_BROKEN_IMAGE_WRITING
@@ -237,7 +207,7 @@ kernel void bilinear_restrict(read_only image2d_t source,
              + read_imagef(source, bilinear_sampler,
                            (convert_float2(coord) + (float2)(1.0f, 1.0f)) /
                            convert_float2(get_image_dim(output)))
-                         ) / 2.0f);
+                         ) / 1.25f);
 }
 
 kernel void reduce(read_only image2d_t buffer,
