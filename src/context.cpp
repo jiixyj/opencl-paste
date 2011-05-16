@@ -76,7 +76,9 @@ void Context::set_source(cv::Mat source, cv::Mat mask) {
   queue_.enqueueWriteImage(cl_source, CL_TRUE,
                            origin, region_source, 0, 0,
                            source_.data);
-  launch_reset_image(true, residual_stack[0]);
+  launch_reset_image(false, residual_stack[0]);
+  launch_reset_image(false, x1_stack[0]);
+  launch_reset_image(false, x2_stack[0]);
 }
 
 void Context::set_target(cv::Mat target) {

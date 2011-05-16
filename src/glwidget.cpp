@@ -59,8 +59,8 @@ void GLWidget::paintGL() {
   static double number_iterations = 10.0;
   static size_t frame_count = 0;
   static int time_interval;
-  static float fps;
-  static float wanted_fps = 30.0f;
+  static double fps;
+  static double wanted_fps = 30.0;
 
   context_->wait_for_calculations();
   float average = context_->get_residual_average();
@@ -76,9 +76,9 @@ void GLWidget::paintGL() {
               << "avg: " << average << std::endl;
 
     if (fps >= wanted_fps) {
-      number_iterations += fps - wanted_fps;
+      number_iterations += (fps - wanted_fps) / 2.0;
     } else {
-      number_iterations -= wanted_fps - fps;
+      number_iterations -= (wanted_fps - fps) / 2.0;
     }
     if (number_iterations < 4) number_iterations = 4;
     frame_time.restart();

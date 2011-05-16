@@ -218,7 +218,7 @@ kernel void bilinear_restrict(read_only image2d_t source,
              + read_imagef(source, bilinear_sampler,
                            (convert_float2(coord) + (float2)(1.0f, 1.0f)) /
                            convert_float2(get_image_dim(output)))
-                         ) / 1.25f);
+                         ) / 2.0f);
 }
 
 kernel void reduce(read_only image2d_t buffer,
