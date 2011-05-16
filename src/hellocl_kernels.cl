@@ -72,14 +72,12 @@ kernel void setup_system(read_only image2d_t source,
     }
 
     float4 laplacef = convert_float4(as_int4(laplace));
-    // is OK because OpenCL has two's complement
 #ifdef FIX_BROKEN_IMAGE_WRITING
     coord.x = coord.x * 2;
 #endif
     write_imagef(b, coord, laplacef);
     if (initialize) {
       write_imagef(x, coord, convert_float4(pixel));
-      // write_imagef(x, coord, 0.0f);
     }
   }
   write_imagef(a1, coord, a1_val);
