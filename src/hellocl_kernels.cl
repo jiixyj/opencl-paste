@@ -91,7 +91,6 @@ kernel void setup_system(read_only image2d_t source,
     }
   } else {
     uint4 tmp = read_imageui(target, sampler, coord + (int2)(ox, oy));
-    a2_val.y = 1;
     float4 tmpf = convert_float4(tmp);
 #ifdef FIX_BROKEN_IMAGE_WRITING
     coord.x = coord.x * 2;
@@ -116,7 +115,7 @@ kernel void jacobi(read_only image2d_t a1,
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
   float4 a2_val = read_imagef(a2, sampler, coord);
-  if (a2_val.y == 1) {
+  if (a2_val.y < 1) {
     return;
   }
   float4 a1_val = read_imagef(a1, sampler, coord);
@@ -159,7 +158,7 @@ kernel void calculate_residual(read_only image2d_t a1,
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
   float4 a2_val = read_imagef(a2, sampler, coord);
-  if (a2_val.y == 1) {
+  if (a2_val.y < 1) {
     return;
   }
   float4 a1_val = read_imagef(a1, sampler, coord);
@@ -284,7 +283,7 @@ kernel void add_images(read_only image2d_t lhs,
                        write_only image2d_t result) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
   float4 result_val;
-  if (read_imagef(a2, sampler, coord).y == 1) {
+  if (read_imagef(a2, sampler, coord).y < 1) {
     result_val = 0.0f;
   } else {
     result_val = read_imagef(lhs, sampler, coord) +
