@@ -1,12 +1,8 @@
-#include "context.h"
 #include "opencl.h"
+#include "context.h"
 
 #include <iostream>
-#include <fstream>
-#include <iterator>
 #include <numeric>
-
-#include <sys/stat.h>
 
 namespace pv {
 
@@ -32,7 +28,7 @@ Context::Context()
 }
 
 void Context::set_source(cv::Mat source, cv::Mat mask) {
-  source_ = make_rgba(source, mask);
+  source_ = pv::make_rgba(source, mask);
   cv::flip(source_, source_, 0);
 
   try {
@@ -84,7 +80,7 @@ void Context::set_source(cv::Mat source, cv::Mat mask) {
 }
 
 void Context::set_target(cv::Mat target) {
-  target_ = make_rgba(target);
+  target_ = pv::make_rgba(target);
   cv::flip(target_, target_, 0);
 
   g_target = load_texture(target_);
@@ -108,9 +104,9 @@ void Context::set_target(cv::Mat target) {
 }
 
 void Context::init_cl() {
-  pv::init_cl(context_, queue_);
+  pv::init_cl(context_, queue_, true);
 
-  program_ = load_program("hellocl_kernels");
+  program_ = pv::load_program(context_, "hellocl_kernels");
   try {
     setup_system = cl::Kernel(program_, "setup_system", NULL);
     jacobi = cl::Kernel(program_, "jacobi", NULL);
@@ -442,17 +438,6 @@ void Context::get_offset(int& off_x, int& off_y) {
   off_y = pos_y;
 }
 
-cv::Mat Context::make_rgba(const cv::Mat& image, cv::Mat alpha) {
-  if (alpha.empty()) {
-    alpha = cv::Mat(cv::Mat::ones(image.size(), CV_8U) * 255);
-  }
-  static int fromto[] = {0, 2,  1, 1,  2, 0,  3, 3};
-  cv::Mat with_alpha(image.size(), CV_8UC4);
-  cv::Mat images[] = {image, alpha};
-  cv::mixChannels(images, 2, &with_alpha, 1, fromto, 4);
-  return with_alpha;
-}
-
 GLuint Context::load_texture(cv::Mat image, int width, int height) {
   std::vector<uint8_t> data(width * height * 4, 0);
   GLuint texture;
@@ -472,75 +457,6 @@ GLuint Context::load_texture(cv::Mat image, int width, int height) {
                !image.empty() ? image.data : data.data());
 
   return texture;
-}
-
-cl::Program Context::load_program(std::string program_name) {
-  bool load_binary = true;
-
-  time_t so_time = 0;
-  time_t cl_time = 1;
-  struct stat stat_buf_so;
-  struct stat stat_buf_cl;
-  int stat_status_so = stat((program_name + ".so").c_str(), &stat_buf_so);
-  int stat_status_cl = stat((program_name + ".cl").c_str(), &stat_buf_cl);
-  if (!stat_status_so && !stat_status_cl) {
-    so_time = stat_buf_so.st_mtime;
-    cl_time = stat_buf_cl.st_mtime;
-  }
-
-  std::ifstream ifs(program_name + ".so");
-  if (!ifs || so_time < cl_time) {
-    if (ifs) ifs.close();
-    load_binary = false;
-    ifs.open(program_name + ".cl");
-  }
-  std::string src((std::istreambuf_iterator<char>(ifs)),
-                   std::istreambuf_iterator<char>());
-  cl::Program program;
-  std::vector<cl::Device> devices(context_.getInfo<CL_CONTEXT_DEVICES>());
-  try {
-    if (load_binary) {
-      cl::Program::Binaries bins {
-        std::make_pair(src.c_str(), src.size())
-      };
-      program = cl::Program(context_, devices, bins);
-    } else {
-      cl::Program::Sources source {
-        std::make_pair(src.c_str(), src.size())
-      };
-      program = cl::Program(context_, source);
-    }
-    std::stringstream options;
-    if (!strcmp(devices[0].getInfo<CL_DEVICE_NAME>().c_str(),
-                "GeForce 8800 GT")) {
-      options << "-D FIX_BROKEN_IMAGE_WRITING";
-    }
-    program.build(devices, options.str().c_str());
-
-    if (!load_binary) {
-      std::string log;
-      program.getBuildInfo<std::string>(devices[0], CL_PROGRAM_BUILD_LOG, &log);
-      std::cerr << log;
-
-      std::vector<size_t> sizes = program.getInfo<CL_PROGRAM_BINARY_SIZES>();
-      std::vector<char*> bins = program.getInfo<CL_PROGRAM_BINARIES>(NULL);
-      if (bins.size()) {
-        std::ofstream out(program_name + ".so");
-        std::copy(bins[0], bins[0] + sizes[0],
-                  std::ostream_iterator<char>(out));
-      }
-    }
-  } catch (cl::Error error) {
-    std::cerr << "ERROR: "
-              << error.what()
-              << "(" << error.err() << ")"
-              << std::endl;
-    std::string log;
-    program.getBuildInfo<std::string>(devices[0], CL_PROGRAM_BUILD_LOG, &log);
-    std::cerr << log;
-    exit(EXIT_FAILURE);
-  }
-  return program;
 }
 
 }

@@ -1,13 +1,11 @@
 #ifndef CONTEXT_H_
 #define CONTEXT_H_
 
-#include <GL/glew.h>
-
 #define __CL_ENABLE_EXCEPTIONS
 #include <CL/cl.hpp>
 
-#include <cv.h>
 #include <stack>
+#include <cv.h>
 
 namespace pv {
 
@@ -87,8 +85,6 @@ class Context {
 
   // helper functions
   GLuint load_texture(cv::Mat image, int width = -1, int height = -1);
-  cv::Mat make_rgba(const cv::Mat& image, cv::Mat alpha = cv::Mat());
-  cl::Program load_program(std::string program_name);
 };
 
 }
