@@ -127,7 +127,8 @@ kernel void calculate_residual(read_only image2d_t a1,
                                read_only image2d_t b,
                                read_only image2d_t x,
                                write_only image2d_t res,
-                               write_only image2d_t gpu_abs) {
+                               write_only image2d_t gpu_abs,
+                               int write_to_image) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
   float4 a2_val = read_imagef(a2, sampler, coord);
@@ -144,7 +145,9 @@ kernel void calculate_residual(read_only image2d_t a1,
 
   sigma -= a2_val.y * read_imagef(x, sampler, coord);
   sigma.w = 0.0f;
-  write_imagef(gpu_abs, coord, sigma * sigma * 128.0f);
+  if (write_to_image) {
+    write_imagef(gpu_abs, coord, sigma * sigma * 128.0f);
+  }
 #ifdef FIX_BROKEN_IMAGE_WRITING
   coord.x = coord.x * 2;
 #endif

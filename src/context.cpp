@@ -256,6 +256,7 @@ void Context::jacobi_iterations(int iterations) {
   calculate_residual.setArg<cl::Image2D>(4, x1_stack[current_grid_]);
   calculate_residual.setArg<cl::Image2D>(5, residual_stack[current_grid_]);
   calculate_residual.setArg<cl::Image2DGL>(6, cl_g_residual);
+  calculate_residual.setArg<int>(7, current_grid_ == 0);
   queue_.enqueueNDRangeKernel(
     calculate_residual,
     cl::NullRange,
