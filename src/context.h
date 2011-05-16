@@ -62,7 +62,8 @@ class Context {
   cl::Kernel reduce;
   cl::Kernel copy_xyz;
   cl::Kernel add_images;
-  cl::Kernel interp;
+  cl::Kernel nearest_interp;
+  cl::Kernel bilinear_interp;
   cl::Kernel bilinear_restrict;
   cl::Image2D cl_source;
   cl::Image2D cl_target;

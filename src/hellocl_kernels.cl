@@ -168,9 +168,8 @@ const sampler_t nearest_sampler = CLK_NORMALIZED_COORDS_TRUE |
                                   CLK_FILTER_NEAREST |
                                   CLK_ADDRESS_CLAMP_TO_EDGE;
 
-kernel void interp(read_only image2d_t source,
-                   write_only image2d_t output,
-                   int bilinear) {
+kernel void nearest_interp(read_only image2d_t source,
+                           write_only image2d_t output) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
 #ifdef FIX_BROKEN_IMAGE_WRITING
@@ -178,7 +177,21 @@ kernel void interp(read_only image2d_t source,
 #else
   write_imagef(output, coord,
 #endif
-    read_imagef(source, bilinear ? bilinear_sampler : nearest_sampler,
+    read_imagef(source, nearest_sampler,
+                (convert_float2(coord) + (float2)(0.5f)) /
+                convert_float2(get_image_dim(output))));
+}
+
+kernel void bilinear_interp(read_only image2d_t source,
+                            write_only image2d_t output) {
+  int2 coord = (int2)(get_global_id(0), get_global_id(1));
+
+#ifdef FIX_BROKEN_IMAGE_WRITING
+  write_imagef(output, coord * (int2)(2, 1),
+#else
+  write_imagef(output, coord,
+#endif
+    read_imagef(source, bilinear_sampler,
                 (convert_float2(coord) + (float2)(0.5f)) /
                 convert_float2(get_image_dim(output))));
 }

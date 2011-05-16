@@ -114,7 +114,8 @@ void Context::init_cl() {
     reset_image = cl::Kernel(program_, "reset_image", NULL);
     reduce = cl::Kernel(program_, "reduce", NULL);
     add_images = cl::Kernel(program_, "add_images", NULL);
-    interp = cl::Kernel(program_, "interp", NULL);
+    bilinear_interp = cl::Kernel(program_, "bilinear_interp", NULL);
+    nearest_interp = cl::Kernel(program_, "nearest_interp", NULL);
     bilinear_restrict = cl::Kernel(program_, "bilinear_restrict", NULL);
   } catch (cl::Error error) {
     std::cerr << "ERROR: "
@@ -307,12 +308,11 @@ void Context::pop_residual_stack() {
                            x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>(),
                            x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>());
 
-    interp.setArg<cl::Image2D>(0, x1_stack[current_grid_ + 1]);
-    interp.setArg<cl::Image2D>(1, cl_x1_copy);
-    interp.setArg<int>(2, true);
+    bilinear_interp.setArg<cl::Image2D>(0, x1_stack[current_grid_ + 1]);
+    bilinear_interp.setArg<cl::Image2D>(1, cl_x1_copy);
     cl::Event ev;
     queue_.enqueueNDRangeKernel(
-      interp,
+      bilinear_interp,
       cl::NullRange,
       cl::NDRange(cl_x1_copy.getImageInfo<CL_IMAGE_WIDTH>(),
                   cl_x1_copy.getImageInfo<CL_IMAGE_HEIGHT>()),
@@ -379,10 +379,9 @@ void Context::build_multigrid(bool initialize) {
                           cl::ImageFormat(CL_RGBA, CL_FLOAT),
                           current_width, current_height));
       }
-      interp.setArg<cl::Image2D>(0, arr[i]->at(a1_stack.size() - 2));
-      interp.setArg<cl::Image2D>(1, arr[i]->back());
-      interp.setArg<int>(2, false);
-      queue_.enqueueNDRangeKernel(interp, cl::NullRange,
+      nearest_interp.setArg<cl::Image2D>(0, arr[i]->at(a1_stack.size() - 2));
+      nearest_interp.setArg<cl::Image2D>(1, arr[i]->back());
+      queue_.enqueueNDRangeKernel(nearest_interp, cl::NullRange,
         cl::NDRange(arr[i]->back().getImageInfo<CL_IMAGE_WIDTH>(),
                     arr[i]->back().getImageInfo<CL_IMAGE_HEIGHT>()),
         cl::NullRange
