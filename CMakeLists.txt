@@ -4,19 +4,25 @@ set(CMAKE_MODULE_PATH ${OpenCL_SOURCE_DIR}/cmake)
 set(EXECUTABLE_OUTPUT_PATH ${OpenCL_BINARY_DIR})
 include_directories(SYSTEM include)
 
+##### GLEW
+include(FindPkgConfig)
+pkg_check_modules(GLEW REQUIRED glew)
+
+##### OpenGL
+find_package(OpenGL REQUIRED)
+
 ##### OpenCV
 find_package(OpenCV REQUIRED)
-include_directories(SYSTEM ${OpenCV_INCLUDE_DIRS})
 
 ##### OpenCL
 find_package(OpenCL REQUIRED)
-include_directories(SYSTEM ${OPENCL_INCLUDE_DIRS})
 
 ##### Qt
-find_package(Qt4 COMPONENTS QtGui QtOpenGL REQUIRED)
+find_package(Qt4 COMPONENTS QtCore QtGui QtOpenGL REQUIRED)
 include(${QT_USE_FILE})
 include_directories(SYSTEM
   ${QT_INCLUDE_DIR}
+  ${QT_QTCORE_INCLUDE_DIR}
   ${QT_QTGUI_INCLUDE_DIR}
   ${QT_QTOPENGL_INCLUDE_DIR}
 )
