@@ -268,7 +268,7 @@ void Context::jacobi_iterations(int iterations) {
     jacobi.setArg<cl::Image2D>(5, x2_stack[current_grid_]);
     jacobi.setArg<cl::Image2DGL>(6, cl_g_render);
     jacobi.setArg<int>(7, (i == iterations - 1) ?
-                            (current_grid_ > 0 ? 0 : 1) : 0);
+                            (current_grid_ == 0) : 0);
     queue_.enqueueNDRangeKernel(
       jacobi,
       cl::NullRange,
