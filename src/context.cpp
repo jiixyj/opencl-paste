@@ -473,7 +473,6 @@ void Context::get_offset(int& off_x, int& off_y) {
 }
 
 GLuint Context::load_texture(cv::Mat image, int width, int height) {
-  std::vector<uint8_t> data(width * height * 4, 0);
   GLuint texture;
 
   glGenTextures(1, &texture); //generate the texture with the loaded data
@@ -488,7 +487,8 @@ GLuint Context::load_texture(cv::Mat image, int width, int height) {
                !image.empty() ? image.cols : width,
                !image.empty() ? image.rows : height,
                0, GL_RGBA, GL_UNSIGNED_BYTE,
-               !image.empty() ? image.data : data.data());
+               !image.empty() ? image.data :
+                            std::vector<uint8_t>(width * height * 4, 0).data());
 
   return texture;
 }
