@@ -4,19 +4,23 @@
 
 #include <highgui.h>
 
-GLWidget::GLWidget(QWidget* _parent, pv::Context* context)
+GLWidget::GLWidget(QWidget* _parent, pv::Context* _context)
           : QGLWidget(_parent),
-            context_(context),
-            width(0),
-            height(0),
-            min_width(0),
-            min_height(0),
-            button_pressed(false),
+            context_(_context),
+            width(),
+            height(),
+            min_width(),
+            min_height(),
+            idle_timer(),
+            frame_time(),
+            old_x(),
+            old_y(),
             old_pos_x(),
-            old_pos_y() {
+            old_pos_y(),
+            button_pressed() {
   connect(&idle_timer, SIGNAL(timeout()), this, SLOT(updateGL()));
   idle_timer.start(0);
-  setFocusPolicy(Qt::ClickFocus);
+  setFocusPolicy(Qt::StrongFocus);
 }
 
 GLWidget::~GLWidget() {
@@ -86,8 +90,8 @@ void GLWidget::paintGL() {
   }
 }
 
-void GLWidget::resizeGL(int width, int height) {
-  glViewport(0, 0, (GLint) width, (GLint) height);
+void GLWidget::resizeGL(int w, int h) {
+  glViewport(0, 0, w, h);
 }
 
 void GLWidget::mousePressEvent(QMouseEvent* mevent) {
@@ -136,6 +140,11 @@ void GLWidget::keyPressEvent(QKeyEvent* kevent) {
       context_->wait_for_calculations();
       context_->pop_residual_stack();
       idle_timer.start();
+      break;
+    case Qt::Key_Q:
+      std::exit(0);
+      break;
+    default:
       break;
   }
 }

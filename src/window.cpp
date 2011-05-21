@@ -16,8 +16,8 @@ void Window::set_images() {
   gl_widget_->set_images();
 }
 
-void Window::set_source(cv::Mat source, cv::Mat mask) {
-  context_.set_source(source, mask);
+void Window::set_source(cv::Mat source, cv::Mat _mask) {
+  context_.set_source(source, _mask);
 }
 
 void Window::set_target(cv::Mat target) {

@@ -77,7 +77,7 @@ class Context {
   cl::Image2DGL cl_g_render;
   cl::Image2DGL cl_g_residual;
   bool draw_residual_;
-  int current_grid_;
+  size_t current_grid_;
   int pos_x;
   int pos_y;
 

@@ -33,6 +33,9 @@ class GLWidget : public QGLWidget {
   QTime frame_time;
   int old_x, old_y, old_pos_x, old_pos_y;
   int button_pressed;
+
+  GLWidget(const GLWidget&);
+  GLWidget* operator=(const GLWidget&);
 };
 
 #endif

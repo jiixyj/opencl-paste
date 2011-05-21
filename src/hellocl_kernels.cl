@@ -225,7 +225,7 @@ kernel void bilinear_restrict(read_only image2d_t source,
 }
 
 kernel void reduce(read_only image2d_t buffer,
-                   const int length,
+                   const long length,
                    local float* scratch,
                    global float* result) {
   int global_index = get_global_id(0);

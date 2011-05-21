@@ -6,16 +6,44 @@
 
 namespace pv {
 
-Context::Context()
-          : context_(),
-            queue_(),
-            source_(),
-            target_(),
-            pos_x(0),
-            pos_y(0),
-            main_loop_event_(),
-            draw_residual_(false),
-            current_grid_(0) {
+Context::Context() :
+    context_(),
+    queue_(),
+    main_loop_event_(),
+    source_(),
+    target_(),
+    origin(),
+    region_source(),
+    region_target(),
+    g_texture(),
+    g_residual(),
+    g_target(),
+    program_(),
+    jacobi(),
+    calculate_residual(),
+    setup_system(),
+    reset_image(),
+    reduce(),
+    copy_xyz(),
+    add_images(),
+    nearest_interp(),
+    bilinear_interp(),
+    bilinear_restrict(),
+    cl_source(),
+    cl_target(),
+    a1_stack(),
+    a2_stack(),
+    a3_stack(),
+    b_stack(),
+    x1_stack(),
+    x2_stack(),
+    residual_stack(),
+    cl_g_render(),
+    cl_g_residual(),
+    draw_residual_(),
+    current_grid_(),
+    pos_x(),
+    pos_y() {
   origin.push_back(0);
   origin.push_back(0);
   origin.push_back(0);
@@ -194,17 +222,17 @@ void Context::wait_for_calculations() {
 }
 
 float Context::get_residual_average() {
-  int global_size = 1024;
-  int local_size = 16;
-  int nr_groups = global_size / local_size;
+  size_t global_size = 1024;
+  size_t local_size = 16;
+  size_t nr_groups = global_size / local_size;
 
-  int nr_pixels = int(residual_stack[0].getImageInfo<CL_IMAGE_WIDTH>()) *
-                  int(residual_stack[0].getImageInfo<CL_IMAGE_HEIGHT>());
+  size_t nr_pixels = residual_stack[0].getImageInfo<CL_IMAGE_WIDTH>() *
+                     residual_stack[0].getImageInfo<CL_IMAGE_HEIGHT>();
 
   cl::Buffer result(context_, CL_MEM_WRITE_ONLY, nr_groups * sizeof(cl_float));
 
   reduce.setArg<cl::Image2D>(0, residual_stack[0]);
-  reduce.setArg<int>(1, nr_pixels);
+  reduce.setArg<cl_ulong>(1, nr_pixels);
   reduce.setArg(2, local_size * sizeof(cl_float), NULL);
   reduce.setArg<cl::Buffer>(3, result);
 
@@ -217,10 +245,12 @@ float Context::get_residual_average() {
     NULL, &ev
   );
   ev.wait();
-  cl_float result_host[nr_groups];
+  std::vector<cl_float> result_host(nr_groups);
   queue_.enqueueReadBuffer(result, CL_TRUE, 0,
-                           nr_groups * sizeof(cl_float), result_host);
-  return std::accumulate(result_host, result_host + nr_groups, .0f) / nr_pixels;
+                           nr_groups * sizeof(cl_float),
+                           &result_host[0]);
+  return std::accumulate(result_host.begin(), result_host.end(), .0f) /
+         float(nr_pixels);
   // return result_host[0];
 }
 
@@ -347,8 +377,8 @@ void Context::pop_residual_stack() {
 }
 
 void Context::build_multigrid(bool initialize) {
-  int current_width = a1_stack[0].getImageInfo<CL_IMAGE_WIDTH>();
-  int current_height = a1_stack[0].getImageInfo<CL_IMAGE_HEIGHT>();
+  size_t current_width = a1_stack[0].getImageInfo<CL_IMAGE_WIDTH>();
+  size_t current_height = a1_stack[0].getImageInfo<CL_IMAGE_HEIGHT>();
   if (initialize) {
     a1_stack.resize(1);
     a2_stack.resize(1);
