@@ -259,6 +259,13 @@ std::pair<int, int> Context::get_gl_size() {
 }
 
 void Context::jacobi_iterations(int iterations) {
+  size_t local_size = 8;
+  size_t glob_width = x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>();
+  size_t glob_height = x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>();
+  glob_width = (glob_width / local_size + bool(glob_width % local_size))
+             * local_size;
+  glob_height = (glob_height / local_size + bool(glob_height % local_size))
+              * local_size;
   for (int i = 0; i < iterations; ++i) {
     jacobi.setArg<cl::Image2D>(0, a1_stack[current_grid_]);
     jacobi.setArg<cl::Image2D>(1, a2_stack[current_grid_]);
@@ -267,14 +274,15 @@ void Context::jacobi_iterations(int iterations) {
     jacobi.setArg<cl::Image2D>(4, x1_stack[current_grid_]);
     jacobi.setArg<cl::Image2D>(5, x2_stack[current_grid_]);
     jacobi.setArg<cl::Image2DGL>(6, cl_g_render);
-    jacobi.setArg<int>(7, (i == iterations - 1) ?
+    jacobi.setArg(7, (local_size + 2) *
+                     (local_size + 2) * sizeof(cl_float4), NULL);
+    jacobi.setArg<int>(8, (i == iterations - 1) ?
                             (current_grid_ == 0) : 0);
     queue_.enqueueNDRangeKernel(
       jacobi,
       cl::NullRange,
-      cl::NDRange(x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>(),
-                  x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>()),
-      cl::NullRange
+      cl::NDRange(glob_width, glob_height),
+      cl::NDRange(local_size, local_size)
     );
     std::swap(x1_stack[current_grid_], x2_stack[current_grid_]);
   }
@@ -300,10 +308,10 @@ void Context::v_cycle(double number_iterations) {
   if (current_grid_ == x1_stack.size() - 1) {
     return;
   }
-  jacobi_iterations(int(number_iterations / 2.0 + 0.5) * 2);
-  push_residual_stack();
-  v_cycle(number_iterations);
-  pop_residual_stack();
+  // jacobi_iterations(int(number_iterations / 2.0 + 0.5) * 2);
+  // push_residual_stack();
+  // v_cycle(number_iterations);
+  // pop_residual_stack();
   jacobi_iterations(int(number_iterations / 2.0 + 0.5) * 2);
 }
 void Context::start_calculation_async(double number_iterations) {

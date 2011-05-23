@@ -92,8 +92,35 @@ kernel void jacobi(read_only image2d_t a1,
                    read_only image2d_t x_in,
                    write_only image2d_t x_out,
                    write_only image2d_t render,
+                   local float4* cache,
                    int write_to_image) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
+  int2 image_dim = get_image_dim(x_in);
+  if (coord.x >= image_dim.x || coord.y >= image_dim.y) {
+    barrier(CLK_LOCAL_MEM_FENCE);
+    return;
+  }
+
+  int2 lc = (int2)(get_local_id(0), get_local_id(1)) + (int2)(1);
+  int lw = get_local_size(0) + 2;
+
+  cache[lw * lc.y + lc.x] = read_imagef(x_in, sampler, coord);
+  if (lc.x == 1) {
+    cache[lw * lc.y + lc.x - 1] =
+                        read_imagef(x_in, sampler, coord + (int2)(-1,  0));
+  } else if (lc.x == lw - 2) {
+    cache[lw * lc.y + lc.x + 1] =
+                        read_imagef(x_in, sampler, coord + (int2)( 1,  0));
+  }
+  if (lc.y == 1) {
+    cache[lw * (lc.y - 1) + lc.x] =
+                        read_imagef(x_in, sampler, coord + (int2)( 0, -1));
+  } else if (lc.y == lw - 2) {
+    cache[lw * (lc.y + 1) + lc.x] =
+                        read_imagef(x_in, sampler, coord + (int2)( 0,  1));
+  }
+
+  barrier(CLK_LOCAL_MEM_FENCE);
 
   float4 a2_val = read_imagef(a2, sampler, coord);
   if (a2_val.y < 1) {
@@ -102,10 +129,10 @@ kernel void jacobi(read_only image2d_t a1,
   float4 a1_val = read_imagef(a1, sampler, coord);
   float4 a3_val = read_imagef(a3, sampler, coord);
   float4 sigma = read_imagef(b, sampler, coord);
-  sigma -= a1_val.y * read_imagef(x_in, sampler, coord + (int2)( 0,  1));
-  sigma -= a2_val.x * read_imagef(x_in, sampler, coord + (int2)(-1,  0));
-  sigma -= a3_val.y * read_imagef(x_in, sampler, coord + (int2)( 0, -1));
-  sigma -= a2_val.z * read_imagef(x_in, sampler, coord + (int2)( 1,  0));
+  sigma -= a1_val.y * cache[lw * (lc.y + 1) + lc.x];
+  sigma -= a2_val.x * cache[lw * lc.y + lc.x - 1];
+  sigma -= a3_val.y * cache[lw * (lc.y - 1) + lc.x];
+  sigma -= a2_val.z * cache[lw * lc.y + lc.x + 1];
 
   float4 result = sigma / a2_val.y;
 #ifdef FIX_BROKEN_IMAGE_WRITING
