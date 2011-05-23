@@ -6,16 +6,24 @@ include_directories(SYSTEM include)
 
 ##### GLEW
 include(FindPkgConfig)
-pkg_check_modules(GLEW REQUIRED glew)
+pkg_check_modules(GLEW glew)
+if(NOT GLEW_FOUND)
+  find_package(GLEW REQUIRED)
+  if(GLEW_FOUND)
+    message(STATUS "But fallback FindGLEW.cmake works")
+  endif()
+endif()
 
 ##### OpenGL
 find_package(OpenGL REQUIRED)
 
 ##### OpenCV
 find_package(OpenCV REQUIRED)
+include_directories(SYSTEM ${OpenCV_INCLUDE_DIRS})
 
 ##### OpenCL
 find_package(OpenCL REQUIRED)
+include_directories(SYSTEM ${OPENCL_INCLUDE_DIR})
 
 ##### Qt
 find_package(Qt4 COMPONENTS QtCore QtGui QtOpenGL REQUIRED)
