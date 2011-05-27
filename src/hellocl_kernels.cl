@@ -96,10 +96,6 @@ kernel void jacobi(read_only image2d_t a1,
                    int write_to_image) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
   int2 image_dim = get_image_dim(x_in);
-  if (coord.x >= image_dim.x || coord.y >= image_dim.y) {
-    barrier(CLK_LOCAL_MEM_FENCE);
-    return;
-  }
 
   int2 lc = (int2)(get_local_id(0), get_local_id(1)) + (int2)(1);
   int lw = get_local_size(0) + 2;
@@ -120,31 +116,38 @@ kernel void jacobi(read_only image2d_t a1,
                         read_imagef(x_in, sampler, coord + (int2)( 0,  1));
   }
 
-  barrier(CLK_LOCAL_MEM_FENCE);
-
-  float4 a2_val = read_imagef(a2, sampler, coord);
-  if (a2_val.y < 1) {
-    return;
-  }
   float4 a1_val = read_imagef(a1, sampler, coord);
+  float4 a2_val = read_imagef(a2, sampler, coord);
   float4 a3_val = read_imagef(a3, sampler, coord);
   float4 sigma = read_imagef(b, sampler, coord);
-  sigma -= a1_val.y * cache[lw * (lc.y + 1) + lc.x];
-  sigma -= a2_val.x * cache[lw * lc.y + lc.x - 1];
-  sigma -= a3_val.y * cache[lw * (lc.y - 1) + lc.x];
-  sigma -= a2_val.z * cache[lw * lc.y + lc.x + 1];
 
-  float4 result = sigma / a2_val.y;
-#ifdef FIX_BROKEN_IMAGE_WRITING
-  write_imagef(x_out, coord * (int2)(2, 1), result);
-#else
-  write_imagef(x_out, coord, result);
-#endif
-  if (write_to_image == 1) {
-    result.w = 255.0f;
-    write_imagef(render, coord, result / 255.0f);
-  } else if (write_to_image == 2) {
-    write_imagef(render, coord, result / 64.0f + 0.5f);
+  barrier(CLK_LOCAL_MEM_FENCE);  // Cache has been written at this point
+
+  for (int i = 0; i < 10; ++i) {
+    sigma -= a1_val.y * cache[lw * (lc.y + 1) + lc.x];
+    sigma -= a2_val.x * cache[lw * lc.y + lc.x - 1];
+    sigma -= a3_val.y * cache[lw * (lc.y - 1) + lc.x];
+    sigma -= a2_val.z * cache[lw * lc.y + lc.x + 1];
+    sigma /= a2_val.y ? a2_val.y : 1;  // prevent division by zero
+
+    cache[lw * lc.y + lc.x] = sigma;
+    sigma = read_imagef(b, sampler, coord);
+
+    barrier(CLK_LOCAL_MEM_FENCE);  // Cache has been updated here
+  }
+
+  if (a2_val.y && coord.x < image_dim.x && coord.y < image_dim.y) {
+  #ifdef FIX_BROKEN_IMAGE_WRITING
+    write_imagef(x_out, coord * (int2)(2, 1), cache[lw * lc.y + lc.x]);
+  #else
+    write_imagef(x_out, coord, cache[lw * lc.y + lc.x]);
+  #endif
+    if (write_to_image == 1) {
+      cache[lw * lc.y + lc.x].w = 255.0f;
+      write_imagef(render, coord, cache[lw * lc.y + lc.x] / 255.0f);
+    } else if (write_to_image == 2) {
+      write_imagef(render, coord, cache[lw * lc.y + lc.x] / 64.0f + 0.5f);
+    }
   }
 }
 
