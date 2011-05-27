@@ -26,7 +26,7 @@ Context::Context() :
     reduce(),
     copy_xyz(),
     add_images(),
-    nearest_interp(),
+    laplace_interp(),
     bilinear_interp(),
     bilinear_restrict(),
     cl_source(),
@@ -149,7 +149,7 @@ void Context::init_cl() {
     reduce = cl::Kernel(program_, "reduce", NULL);
     add_images = cl::Kernel(program_, "add_images", NULL);
     bilinear_interp = cl::Kernel(program_, "bilinear_interp", NULL);
-    nearest_interp = cl::Kernel(program_, "nearest_interp", NULL);
+    laplace_interp = cl::Kernel(program_, "laplace_interp", NULL);
     bilinear_restrict = cl::Kernel(program_, "bilinear_restrict", NULL);
   } catch (cl::Error error) {
     std::cerr << "ERROR: "
@@ -424,9 +424,9 @@ void Context::build_multigrid(bool initialize) {
                           cl::ImageFormat(CL_RGBA, CL_FLOAT),
                           current_width, current_height));
       }
-      nearest_interp.setArg<cl::Image2D>(0, arr[i]->at(a1_stack.size() - 2));
-      nearest_interp.setArg<cl::Image2D>(1, arr[i]->back());
-      queue_.enqueueNDRangeKernel(nearest_interp, cl::NullRange,
+      laplace_interp.setArg<cl::Image2D>(0, arr[i]->at(a1_stack.size() - 2));
+      laplace_interp.setArg<cl::Image2D>(1, arr[i]->back());
+      queue_.enqueueNDRangeKernel(laplace_interp, cl::NullRange,
         cl::NDRange(arr[i]->back().getImageInfo<CL_IMAGE_WIDTH>(),
                     arr[i]->back().getImageInfo<CL_IMAGE_HEIGHT>()),
         cl::NullRange

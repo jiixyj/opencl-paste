@@ -202,7 +202,7 @@ const sampler_t nearest_sampler = CLK_NORMALIZED_COORDS_TRUE |
                                   CLK_FILTER_NEAREST |
                                   CLK_ADDRESS_CLAMP_TO_EDGE;
 
-kernel void nearest_interp(read_only image2d_t source,
+kernel void laplace_interp(read_only image2d_t source,
                            write_only image2d_t output) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
