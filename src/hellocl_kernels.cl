@@ -77,12 +77,13 @@ kernel void setup_system(read_only image2d_t source,
 #endif
     write_imagef(b, coord, laplacef);
     if (initialize) {
+      // write_imagef(x, coord, 0);
       write_imagef(x, coord, convert_float4(pixel));
     }
+    write_imagef(a1, coord, a1_val);
+    write_imagef(a2, coord, a2_val);
+    write_imagef(a3, coord, a3_val);
   }
-  write_imagef(a1, coord, a1_val);
-  write_imagef(a2, coord, a2_val);
-  write_imagef(a3, coord, a3_val);
 }
 
 kernel void jacobi(read_only image2d_t a1,

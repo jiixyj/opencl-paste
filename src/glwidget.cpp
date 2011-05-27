@@ -78,6 +78,7 @@ void GLWidget::paintGL() {
     std::cerr << "FPS: " << fps << " "
               << "iterations: " << number_iterations << " "
               << "avg: " << average << std::endl;
+    // if (average < 1e-8) exit(0);  // for benchmarking
 
     if (fps >= wanted_fps) {
       number_iterations += (fps - wanted_fps) / 2.0;

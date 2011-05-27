@@ -107,6 +107,10 @@ void Context::set_source(cv::Mat source, cv::Mat mask) {
   launch_reset_image(false, residual_stack[0]);
   launch_reset_image(false, x1_stack[0]);
   launch_reset_image(false, x2_stack[0]);
+  launch_reset_image(false, a1_stack[0]);
+  launch_reset_image(false, a2_stack[0]);
+  launch_reset_image(false, a3_stack[0]);
+  launch_reset_image(true, b_stack[0]);
 }
 
 void Context::set_target(cv::Mat target) {
