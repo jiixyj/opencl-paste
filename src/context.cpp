@@ -271,16 +271,13 @@ void Context::jacobi_iterations(int iterations) {
   glob_height = (glob_height / local_size + bool(glob_height % local_size))
               * local_size;
   for (int i = 0; i < iterations; ++i) {
-    jacobi.setArg<cl::Image2D>(0, a1_stack[current_grid_]);
-    jacobi.setArg<cl::Image2D>(1, a2_stack[current_grid_]);
-    jacobi.setArg<cl::Image2D>(2, a3_stack[current_grid_]);
-    jacobi.setArg<cl::Image2D>(3, b_stack[current_grid_]);
-    jacobi.setArg<cl::Image2D>(4, x1_stack[current_grid_]);
-    jacobi.setArg<cl::Image2D>(5, x2_stack[current_grid_]);
-    jacobi.setArg<cl::Image2DGL>(6, cl_g_render);
-    jacobi.setArg(7, (local_size + 2) *
+    jacobi.setArg<cl::Image2D>(0, b_stack[current_grid_]);
+    jacobi.setArg<cl::Image2D>(1, x1_stack[current_grid_]);
+    jacobi.setArg<cl::Image2D>(2, x2_stack[current_grid_]);
+    jacobi.setArg<cl::Image2DGL>(3, cl_g_render);
+    jacobi.setArg(4, (local_size + 2) *
                      (local_size + 2) * sizeof(cl_float4), NULL);
-    jacobi.setArg<int>(8, (i == iterations - 1) ?
+    jacobi.setArg<int>(5, (i == iterations - 1) ?
                             (current_grid_ == 0) : 0);
     queue_.enqueueNDRangeKernel(
       jacobi,
@@ -291,14 +288,11 @@ void Context::jacobi_iterations(int iterations) {
     std::swap(x1_stack[current_grid_], x2_stack[current_grid_]);
   }
   // residual calculation
-  calculate_residual.setArg<cl::Image2D>(0, a1_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2D>(1, a2_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2D>(2, a3_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2D>(3, b_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2D>(4, x1_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2D>(5, residual_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2DGL>(6, cl_g_residual);
-  calculate_residual.setArg<int>(7, current_grid_ == 0);
+  calculate_residual.setArg<cl::Image2D>(0, b_stack[current_grid_]);
+  calculate_residual.setArg<cl::Image2D>(1, x1_stack[current_grid_]);
+  calculate_residual.setArg<cl::Image2D>(2, residual_stack[current_grid_]);
+  calculate_residual.setArg<cl::Image2DGL>(3, cl_g_residual);
+  calculate_residual.setArg<int>(4, current_grid_ == 0);
   queue_.enqueueNDRangeKernel(
     calculate_residual,
     cl::NullRange,
@@ -376,7 +370,7 @@ void Context::pop_residual_stack() {
 
     add_images.setArg<cl::Image2D>(0, cl_current_x1_copy);
     add_images.setArg<cl::Image2D>(1, cl_x1_copy);
-    add_images.setArg<cl::Image2D>(2, a2_stack[current_grid_]);
+    add_images.setArg<cl::Image2D>(2, b_stack[current_grid_]);
     add_images.setArg<cl::Image2D>(3, x1_stack[current_grid_]);
     queue_.enqueueNDRangeKernel(
       add_images,
@@ -438,14 +432,11 @@ void Context::build_multigrid(bool initialize) {
 void Context::setup_new_system(bool initialize) {
   setup_system.setArg<cl::Image2D>(0, cl_source);
   setup_system.setArg<cl::Image2D>(1, cl_target);
-  setup_system.setArg<cl::Image2D>(2, a1_stack[0]);
-  setup_system.setArg<cl::Image2D>(3, a2_stack[0]);
-  setup_system.setArg<cl::Image2D>(4, a3_stack[0]);
-  setup_system.setArg<cl::Image2D>(5, b_stack[0]);
-  setup_system.setArg<cl::Image2D>(6, x1_stack[0]);
-  setup_system.setArg<cl_int>(7, pos_x);
-  setup_system.setArg<cl_int>(8, pos_y);
-  setup_system.setArg<cl_int>(9, initialize);
+  setup_system.setArg<cl::Image2D>(2, b_stack[0]);
+  setup_system.setArg<cl::Image2D>(3, x1_stack[0]);
+  setup_system.setArg<cl_int>(4, pos_x);
+  setup_system.setArg<cl_int>(5, pos_y);
+  setup_system.setArg<cl_int>(6, initialize);
 
   queue_.enqueueNDRangeKernel(
     setup_system,

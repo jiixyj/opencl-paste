@@ -6,9 +6,6 @@ const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE |
 
 kernel void setup_system(read_only image2d_t source,
                          read_only image2d_t target,
-                         write_only image2d_t a1,
-                         write_only image2d_t a2,
-                         write_only image2d_t a3,
                          write_only image2d_t b,
                          write_only image2d_t x,
                          int ox, int oy,
@@ -17,9 +14,6 @@ kernel void setup_system(read_only image2d_t source,
   size_t size_x = get_global_size(0);
 
   uint4 pixel = read_imageui(source, sampler, coord);
-  float4 a1_val = 0.0f;
-  float4 a2_val = 0.0f;
-  float4 a3_val = 0.0f;
   if (pixel.w) {
     uint4 source_m = read_imageui(source, sampler, coord);
     uint4 source_u = read_imageui(source, sampler, coord + (int2)( 0,  1));
@@ -38,12 +32,6 @@ kernel void setup_system(read_only image2d_t source,
     bool l_s = target_l.w;
     bool d_s = target_d.w;
     bool r_s = target_r.w;
-
-    a2_val.y =  4.0f;
-    a1_val.y = -1.0f;
-    a2_val.x = -1.0f;
-    a3_val.y = -1.0f;
-    a2_val.z = -1.0f;
 
     uint4 laplace = (uint4)(0);
     if (!u_o && u_s) {
@@ -71,6 +59,8 @@ kernel void setup_system(read_only image2d_t source,
       laplace += source_m - source_r;
     }
 
+    laplace.w = 1;
+
     float4 laplacef = convert_float4(as_int4(laplace));
 #ifdef FIX_BROKEN_IMAGE_WRITING
     coord.x = coord.x * 2;
@@ -80,102 +70,95 @@ kernel void setup_system(read_only image2d_t source,
       // write_imagef(x, coord, 0);
       write_imagef(x, coord, convert_float4(pixel));
     }
-    write_imagef(a1, coord, a1_val);
-    write_imagef(a2, coord, a2_val);
-    write_imagef(a3, coord, a3_val);
   }
 }
 
-kernel void jacobi(read_only image2d_t a1,
-                   read_only image2d_t a2,
-                   read_only image2d_t a3,
-                   read_only image2d_t b,
+kernel void jacobi(read_only image2d_t b,
                    read_only image2d_t x_in,
                    write_only image2d_t x_out,
                    write_only image2d_t render,
                    local float4* cache,
                    int write_to_image) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
+
+  float4 sigma = read_imagef(b, sampler, coord);
+  float4 sigma_tmp = sigma;
+  bool is_laplace = sigma_tmp.w == 1.0f;
+
+  // local bool do_work;
+  // do_work = false;
+  // barrier(CLK_LOCAL_MEM_FENCE);
+  // if (is_laplace) do_work = true;
+  // barrier(CLK_LOCAL_MEM_FENCE);
+  // if (!do_work) {
+  //   printf("quitting...\n");
+  //   return;
+  // }
+
   int2 image_dim = get_image_dim(x_in);
 
   int2 lc = (int2)(get_local_id(0), get_local_id(1)) + (int2)(1);
   int lw = get_local_size(0) + 2;
 
+  // Fill Cache
   cache[lw * lc.y + lc.x] = read_imagef(x_in, sampler, coord);
-  if (lc.x == 1) {
-    cache[lw * lc.y + lc.x - 1] =
-                        read_imagef(x_in, sampler, coord + (int2)(-1,  0));
-  } else if (lc.x == lw - 2) {
-    cache[lw * lc.y + lc.x + 1] =
-                        read_imagef(x_in, sampler, coord + (int2)( 1,  0));
-  }
-  if (lc.y == 1) {
-    cache[lw * (lc.y - 1) + lc.x] =
-                        read_imagef(x_in, sampler, coord + (int2)( 0, -1));
-  } else if (lc.y == lw - 2) {
-    cache[lw * (lc.y + 1) + lc.x] =
-                        read_imagef(x_in, sampler, coord + (int2)( 0,  1));
-  }
-
-  float4 a1_val = read_imagef(a1, sampler, coord);
-  float4 a2_val = read_imagef(a2, sampler, coord);
-  float4 a3_val = read_imagef(a3, sampler, coord);
-  float4 sigma = read_imagef(b, sampler, coord);
+  if (lc.x == 1)
+    cache[lw*lc.y+lc.x-1] = read_imagef(x_in, sampler, coord + (int2)(-1, 0));
+  else if (lc.x == lw - 2)
+    cache[lw*lc.y+lc.x+1] = read_imagef(x_in, sampler, coord + (int2)( 1, 0));
+  if (lc.y == 1)
+    cache[lw*(lc.y-1)+lc.x] = read_imagef(x_in, sampler, coord + (int2)(0, -1));
+  else if (lc.y == lw - 2)
+    cache[lw*(lc.y+1)+lc.x] = read_imagef(x_in, sampler, coord + (int2)(0,  1));
 
   barrier(CLK_LOCAL_MEM_FENCE);  // Cache has been written at this point
 
   for (int i = 0; i < 10; ++i) {
-    sigma -= a1_val.y * cache[lw * (lc.y + 1) + lc.x];
-    sigma -= a2_val.x * cache[lw * lc.y + lc.x - 1];
-    sigma -= a3_val.y * cache[lw * (lc.y - 1) + lc.x];
-    sigma -= a2_val.z * cache[lw * lc.y + lc.x + 1];
-    sigma /= a2_val.y ? a2_val.y : 1;  // prevent division by zero
+    sigma_tmp += cache[lw*(lc.y+1)+lc.x];
+    sigma_tmp += cache[lw*lc.y+lc.x-1];
+    sigma_tmp += cache[lw*(lc.y-1)+lc.x];
+    sigma_tmp += cache[lw*lc.y+lc.x+1];
+    sigma_tmp /= 4.0f;
 
-    cache[lw * lc.y + lc.x] = sigma;
-    sigma = read_imagef(b, sampler, coord);
+    cache[lw*lc.y+lc.x] = is_laplace ? sigma_tmp : sigma;
+    sigma_tmp = sigma;
 
     barrier(CLK_LOCAL_MEM_FENCE);  // Cache has been updated here
   }
 
-  if (a2_val.y && coord.x < image_dim.x && coord.y < image_dim.y) {
-  #ifdef FIX_BROKEN_IMAGE_WRITING
-    write_imagef(x_out, coord * (int2)(2, 1), cache[lw * lc.y + lc.x]);
-  #else
-    write_imagef(x_out, coord, cache[lw * lc.y + lc.x]);
-  #endif
+  if (is_laplace && coord.x < image_dim.x && coord.y < image_dim.y) {
+#ifdef FIX_BROKEN_IMAGE_WRITING
+    write_imagef(x_out, coord * (int2)(2, 1), cache[lw*lc.y+lc.x]);
+#else
+    write_imagef(x_out, coord, cache[lw*lc.y+lc.x]);
+#endif
     if (write_to_image == 1) {
       cache[lw * lc.y + lc.x].w = 255.0f;
-      write_imagef(render, coord, cache[lw * lc.y + lc.x] / 255.0f);
+      write_imagef(render, coord, cache[lw*lc.y+lc.x] / 255.0f);
     } else if (write_to_image == 2) {
-      write_imagef(render, coord, cache[lw * lc.y + lc.x] / 64.0f + 0.5f);
+      write_imagef(render, coord, cache[lw*lc.y+lc.x] / 64.0f + 0.5f);
     }
   }
 }
 
-kernel void calculate_residual(read_only image2d_t a1,
-                               read_only image2d_t a2,
-                               read_only image2d_t a3,
-                               read_only image2d_t b,
+kernel void calculate_residual(read_only image2d_t b,
                                read_only image2d_t x,
                                write_only image2d_t res,
                                write_only image2d_t gpu_abs,
                                int write_to_image) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
-  float4 a2_val = read_imagef(a2, sampler, coord);
-  if (a2_val.y < 1) {
-    return;
-  }
-  float4 a1_val = read_imagef(a1, sampler, coord);
-  float4 a3_val = read_imagef(a3, sampler, coord);
   float4 sigma = read_imagef(b, sampler, coord);
-  sigma -= a1_val.y * read_imagef(x, sampler, coord + (int2)( 0,  1));
-  sigma -= a2_val.x * read_imagef(x, sampler, coord + (int2)(-1,  0));
-  sigma -= a3_val.y * read_imagef(x, sampler, coord + (int2)( 0, -1));
-  sigma -= a2_val.z * read_imagef(x, sampler, coord + (int2)( 1,  0));
+  float laplace = sigma.w;
+  if (laplace == 0.0f) return;
 
-  sigma -= a2_val.y * read_imagef(x, sampler, coord);
-  sigma.w = 0.0f;
+  sigma += read_imagef(x, sampler, coord + (int2)( 0,  1));
+  sigma += read_imagef(x, sampler, coord + (int2)(-1,  0));
+  sigma += read_imagef(x, sampler, coord + (int2)( 0, -1));
+  sigma += read_imagef(x, sampler, coord + (int2)( 1,  0));
+
+  sigma -= 4 * read_imagef(x, sampler, coord);
+  sigma.w = laplace;
   if (write_to_image) {
     write_imagef(gpu_abs, coord, sigma * sigma * 128.0f);
   }
@@ -235,24 +218,28 @@ kernel void bilinear_restrict(read_only image2d_t source,
 
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
+  float4 ll = read_imagef(source, bilinear_sampler,
+                           (convert_float2(coord)) /
+                           convert_float2(get_image_dim(output)));
+  float4 lr = read_imagef(source, bilinear_sampler,
+                           (convert_float2(coord) + (float2)(1.0f, 0.0f)) /
+                           convert_float2(get_image_dim(output)));
+  float4 ul = read_imagef(source, bilinear_sampler,
+                           (convert_float2(coord) + (float2)(0.0f, 1.0f)) /
+                           convert_float2(get_image_dim(output)));
+  float4 ur = read_imagef(source, bilinear_sampler,
+                           (convert_float2(coord) + (float2)(0.0f, 1.0f)) /
+                           convert_float2(get_image_dim(output)));
+
+  float4 result = (ll + lr + ul + ur) / 2.0f;
+  result.w = ll.w && lr.w && ul.w && ur.w;
+
 #ifdef FIX_BROKEN_IMAGE_WRITING
   write_imagef(output, coord * (int2)(2, 1),
 #else
   write_imagef(output, coord,
 #endif
-              (read_imagef(source, bilinear_sampler,
-                           (convert_float2(coord)) /
-                           convert_float2(get_image_dim(output)))
-             + read_imagef(source, bilinear_sampler,
-                           (convert_float2(coord) + (float2)(1.0f, 0.0f)) /
-                           convert_float2(get_image_dim(output)))
-             + read_imagef(source, bilinear_sampler,
-                           (convert_float2(coord) + (float2)(0.0f, 1.0f)) /
-                           convert_float2(get_image_dim(output)))
-             + read_imagef(source, bilinear_sampler,
-                           (convert_float2(coord) + (float2)(1.0f, 1.0f)) /
-                           convert_float2(get_image_dim(output)))
-                         ) / 2.0f);
+               result);
 }
 
 kernel void reduce(read_only image2d_t buffer,
@@ -268,7 +255,7 @@ kernel void reduce(read_only image2d_t buffer,
     float4 element = read_imagef(buffer, sampler,
                                          (int2)(global_index % size.x,
                                                 global_index / size.x));
-    accumulator += dot(element * element, (float4)(1.0f));
+    accumulator += dot(element * element, (float4)(1.0f, 1.0f, 1.0f, 0.0f));
     global_index += get_global_size(0);
   }
 
@@ -294,15 +281,16 @@ kernel void reduce(read_only image2d_t buffer,
 
 kernel void add_images(read_only image2d_t lhs,
                        read_only image2d_t rhs,
-                       read_only image2d_t a2,
+                       read_only image2d_t b,
                        write_only image2d_t result) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
   float4 result_val;
-  if (read_imagef(a2, sampler, coord).y < 1) {
+  if (read_imagef(b, sampler, coord).w == 0.0f) {
     result_val = 0.0f;
   } else {
     result_val = read_imagef(lhs, sampler, coord) +
                  read_imagef(rhs, sampler, coord);
+    result_val.w = 0.0f;
   }
 #ifdef FIX_BROKEN_IMAGE_WRITING
     write_imagef(result, coord * (int2)(2, 1),
