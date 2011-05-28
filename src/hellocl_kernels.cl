@@ -114,11 +114,11 @@ kernel void jacobi(read_only image2d_t b,
   barrier(CLK_LOCAL_MEM_FENCE);  // Cache has been written at this point
 
   for (int i = 0; i < 10; ++i) {
-    sigma_tmp += cache[lw*(lc.y+1)+lc.x];
-    sigma_tmp += cache[lw*lc.y+lc.x-1];
-    sigma_tmp += cache[lw*(lc.y-1)+lc.x];
-    sigma_tmp += cache[lw*lc.y+lc.x+1];
-    sigma_tmp /= 4.0f;
+    sigma_tmp -= -1.0f * cache[lw*(lc.y+1)+lc.x];
+    sigma_tmp -= -1.0f * cache[lw*lc.y+lc.x-1];
+    sigma_tmp -= -1.0f * cache[lw*(lc.y-1)+lc.x];
+    sigma_tmp -= -1.0f * cache[lw*lc.y+lc.x+1];
+    sigma_tmp /=  4.0f;
 
     cache[lw*lc.y+lc.x] = is_laplace ? sigma_tmp : sigma;
     sigma_tmp = sigma;
@@ -152,12 +152,12 @@ kernel void calculate_residual(read_only image2d_t b,
   float laplace = sigma.w;
   if (laplace == 0.0f) return;
 
-  sigma += read_imagef(x, sampler, coord + (int2)( 0,  1));
-  sigma += read_imagef(x, sampler, coord + (int2)(-1,  0));
-  sigma += read_imagef(x, sampler, coord + (int2)( 0, -1));
-  sigma += read_imagef(x, sampler, coord + (int2)( 1,  0));
+  sigma -= -1.0f * read_imagef(x, sampler, coord + (int2)( 0,  1));
+  sigma -= -1.0f * read_imagef(x, sampler, coord + (int2)(-1,  0));
+  sigma -= -1.0f * read_imagef(x, sampler, coord + (int2)( 0, -1));
+  sigma -= -1.0f * read_imagef(x, sampler, coord + (int2)( 1,  0));
 
-  sigma -= 4 * read_imagef(x, sampler, coord);
+  sigma -=  4.0f * read_imagef(x, sampler, coord);
   sigma.w = laplace;
   if (write_to_image) {
     write_imagef(gpu_abs, coord, sigma * sigma * 128.0f);
