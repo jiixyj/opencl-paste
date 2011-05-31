@@ -56,6 +56,7 @@ kernel void setup_system(read_only image2d_t source,
       laplace += source_m - source_d;
     }
     if (r_s) {
+
       laplace += source_m - source_r;
     }
 
@@ -73,6 +74,16 @@ kernel void setup_system(read_only image2d_t source,
   }
 }
 
+float laplace_m(float h) {
+  return (8 * h * h + 4) / (3 * h * h);
+}
+float laplace_e(float h) {
+  return -(h * h + 2) / (3 * h * h);
+}
+float laplace_c(float h) {
+  return -(h * h - 1) / (3 * h * h);
+}
+
 kernel void jacobi(read_only image2d_t b,
                    read_only image2d_t x_in,
                    write_only image2d_t x_out,
@@ -83,7 +94,11 @@ kernel void jacobi(read_only image2d_t b,
 
   float4 sigma = read_imagef(b, sampler, coord);
   float4 sigma_tmp = sigma;
-  bool is_laplace = sigma_tmp.w == 1.0f;
+  float h = sigma_tmp.w;
+  float c = laplace_c(h ? h : 1);
+  float e = laplace_e(h ? h : 1);
+  float m = laplace_m(h ? h : 1);
+  // printf("%f %f %f\n", h, e, m);
 
   // local bool do_work;
   // do_work = false;
@@ -102,31 +117,51 @@ kernel void jacobi(read_only image2d_t b,
 
   // Fill Cache
   cache[lw * lc.y + lc.x] = read_imagef(x_in, sampler, coord);
-  if (lc.x == 1)
+  if (lc.x == 1) {
     cache[lw*lc.y+lc.x-1] = read_imagef(x_in, sampler, coord + (int2)(-1, 0));
-  else if (lc.x == lw - 2)
+    if (lc.y == 1) {
+      cache[lw*(lc.y-1)+lc.x-1] =
+                             read_imagef(x_in, sampler, coord + (int2)(-1, -1));
+    } else if (lc.y == lw - 2) {
+      cache[lw*(lc.y+1)+lc.x-1] =
+                             read_imagef(x_in, sampler, coord + (int2)(-1, 1));
+    }
+  } else if (lc.x == lw - 2) {
     cache[lw*lc.y+lc.x+1] = read_imagef(x_in, sampler, coord + (int2)( 1, 0));
-  if (lc.y == 1)
+    if (lc.y == lw - 2) {
+      cache[lw*(lc.y+1)+lc.x+1] =
+                             read_imagef(x_in, sampler, coord + (int2)(1, 1));
+    } else if (lc.y == 1) {
+      cache[lw*(lc.y-1)+lc.x+1] =
+                             read_imagef(x_in, sampler, coord + (int2)(1, -1));
+    }
+  }
+  if (lc.y == 1) {
     cache[lw*(lc.y-1)+lc.x] = read_imagef(x_in, sampler, coord + (int2)(0, -1));
-  else if (lc.y == lw - 2)
+  } else if (lc.y == lw - 2) {
     cache[lw*(lc.y+1)+lc.x] = read_imagef(x_in, sampler, coord + (int2)(0,  1));
+  }
 
   barrier(CLK_LOCAL_MEM_FENCE);  // Cache has been written at this point
 
   for (int i = 0; i < 10; ++i) {
-    sigma_tmp -= -1.0f * cache[lw*(lc.y+1)+lc.x];
-    sigma_tmp -= -1.0f * cache[lw*lc.y+lc.x-1];
-    sigma_tmp -= -1.0f * cache[lw*(lc.y-1)+lc.x];
-    sigma_tmp -= -1.0f * cache[lw*lc.y+lc.x+1];
-    sigma_tmp /=  4.0f;
+    sigma_tmp -= e * cache[lw*(lc.y+1)+lc.x];
+    sigma_tmp -= e * cache[lw*lc.y+lc.x-1];
+    sigma_tmp -= e * cache[lw*(lc.y-1)+lc.x];
+    sigma_tmp -= e * cache[lw*lc.y+lc.x+1];
+    sigma_tmp -= c * cache[lw*(lc.y+1)+lc.x+1];
+    sigma_tmp -= c * cache[lw*(lc.y+1)+lc.x-1];
+    sigma_tmp -= c * cache[lw*(lc.y-1)+lc.x+1];
+    sigma_tmp -= c * cache[lw*(lc.y-1)+lc.x-1];
+    sigma_tmp /= m;
 
-    cache[lw*lc.y+lc.x] = is_laplace ? sigma_tmp : sigma;
+    cache[lw*lc.y+lc.x] = h ? sigma_tmp : sigma;
     sigma_tmp = sigma;
 
     barrier(CLK_LOCAL_MEM_FENCE);  // Cache has been updated here
   }
 
-  if (is_laplace && coord.x < image_dim.x && coord.y < image_dim.y) {
+  if (h && coord.x < image_dim.x && coord.y < image_dim.y) {
 #ifdef FIX_BROKEN_IMAGE_WRITING
     write_imagef(x_out, coord * (int2)(2, 1), cache[lw*lc.y+lc.x]);
 #else
@@ -149,16 +184,24 @@ kernel void calculate_residual(read_only image2d_t b,
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
   float4 sigma = read_imagef(b, sampler, coord);
-  float laplace = sigma.w;
-  if (laplace == 0.0f) return;
+  float h = sigma.w;
+  if (h == 0.0f) return;
 
-  sigma -= -1.0f * read_imagef(x, sampler, coord + (int2)( 0,  1));
-  sigma -= -1.0f * read_imagef(x, sampler, coord + (int2)(-1,  0));
-  sigma -= -1.0f * read_imagef(x, sampler, coord + (int2)( 0, -1));
-  sigma -= -1.0f * read_imagef(x, sampler, coord + (int2)( 1,  0));
+  float c = laplace_c(h ? h : 1);
+  float e = laplace_e(h ? h : 1);
+  float m = laplace_m(h ? h : 1);
 
-  sigma -=  4.0f * read_imagef(x, sampler, coord);
-  sigma.w = laplace;
+  sigma -= e * read_imagef(x, sampler, coord + (int2)( 0,  1));
+  sigma -= e * read_imagef(x, sampler, coord + (int2)(-1,  0));
+  sigma -= e * read_imagef(x, sampler, coord + (int2)( 0, -1));
+  sigma -= e * read_imagef(x, sampler, coord + (int2)( 1,  0));
+  sigma -= c * read_imagef(x, sampler, coord + (int2)( 1,  1));
+  sigma -= c * read_imagef(x, sampler, coord + (int2)(-1,  1));
+  sigma -= c * read_imagef(x, sampler, coord + (int2)( 1, -1));
+  sigma -= c * read_imagef(x, sampler, coord + (int2)(-1, -1));
+
+  sigma -= m * read_imagef(x, sampler, coord);
+  sigma.w = h;
   if (write_to_image) {
     write_imagef(gpu_abs, coord, sigma * sigma * 128.0f);
   }
@@ -230,9 +273,24 @@ kernel void bilinear_restrict(read_only image2d_t source,
   float4 ur = read_imagef(source, bilinear_sampler,
                            (convert_float2(coord) + (float2)(0.0f, 1.0f)) /
                            convert_float2(get_image_dim(output)));
+  float4 lln = read_imagef(source, nearest_sampler,
+                           (convert_float2(coord)) /
+                           convert_float2(get_image_dim(output)));
+  float4 lrn = read_imagef(source, nearest_sampler,
+                           (convert_float2(coord) + (float2)(1.0f, 0.0f)) /
+                           convert_float2(get_image_dim(output)));
+  float4 uln = read_imagef(source, nearest_sampler,
+                           (convert_float2(coord) + (float2)(0.0f, 1.0f)) /
+                           convert_float2(get_image_dim(output)));
+  float4 urn = read_imagef(source, nearest_sampler,
+                           (convert_float2(coord) + (float2)(0.0f, 1.0f)) /
+                           convert_float2(get_image_dim(output)));
 
-  float4 result = (ll + lr + ul + ur) / 2.0f;
-  result.w = ll.w && lr.w && ul.w && ur.w;
+  float4 result = (ll + lr + ul + ur) / 2.5f;
+  // result.w = ll.w && lr.w && ul.w && ur.w;
+  result.w = fmax(fmax(fmax(lln.w, lrn.w), uln.w), urn.w);
+  if (result.w) result.w += 1.0f;
+  // printf("%f %f %d\n", res1, result.w, res1 == result.w);
 
 #ifdef FIX_BROKEN_IMAGE_WRITING
   write_imagef(output, coord * (int2)(2, 1),
