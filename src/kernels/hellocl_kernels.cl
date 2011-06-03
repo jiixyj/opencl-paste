@@ -56,7 +56,6 @@ kernel void setup_system(read_only image2d_t source,
       laplace += source_m - source_d;
     }
     if (r_s) {
-
       laplace += source_m - source_r;
     }
 
@@ -193,9 +192,6 @@ kernel void calculate_residual(read_only image2d_t b,
 
   sigma -= m * read_imagef(x, sampler, coord);
   sigma.w = h;
-  // if (write_to_image) {
-  //   write_imagef(gpu_abs, coord, sigma * sigma * 128.0f);
-  // }
 #ifdef FIX_BROKEN_IMAGE_WRITING
   coord.x = coord.x * 2;
 #endif
@@ -218,20 +214,6 @@ const sampler_t bilinear_sampler = CLK_NORMALIZED_COORDS_TRUE |
 const sampler_t nearest_sampler = CLK_NORMALIZED_COORDS_TRUE |
                                   CLK_FILTER_NEAREST |
                                   CLK_ADDRESS_CLAMP_TO_EDGE;
-
-kernel void laplace_interp(read_only image2d_t source,
-                           write_only image2d_t output) {
-  int2 coord = (int2)(get_global_id(0), get_global_id(1));
-
-#ifdef FIX_BROKEN_IMAGE_WRITING
-  write_imagef(output, coord * (int2)(2, 1),
-#else
-  write_imagef(output, coord,
-#endif
-    read_imagef(source, nearest_sampler,
-                (convert_float2(coord) + (float2)(0.5f)) /
-                convert_float2(get_image_dim(output))));
-}
 
 kernel void bilinear_interp(read_only image2d_t source,
                             write_only image2d_t output) {

@@ -22,7 +22,6 @@ SolverContext::SolverContext() :
     reduce(),
     copy_xyz(),
     add_images(),
-    laplace_interp(),
     bilinear_interp(),
     bilinear_restrict(),
     cl_source(),
@@ -112,7 +111,6 @@ void SolverContext::init(cl::Context context,
     reduce = cl::Kernel(program_, "reduce", NULL);
     add_images = cl::Kernel(program_, "add_images", NULL);
     bilinear_interp = cl::Kernel(program_, "bilinear_interp", NULL);
-    laplace_interp = cl::Kernel(program_, "laplace_interp", NULL);
     bilinear_restrict = cl::Kernel(program_, "bilinear_restrict", NULL);
   } catch (cl::Error error) {
     std::cerr << "ERROR: "

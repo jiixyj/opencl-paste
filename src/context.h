@@ -57,7 +57,6 @@ class SolverContext {
   cl::Kernel reduce;
   cl::Kernel copy_xyz;
   cl::Kernel add_images;
-  cl::Kernel laplace_interp;
   cl::Kernel bilinear_interp;
   cl::Kernel bilinear_restrict;
   cl::Image2D cl_source;
