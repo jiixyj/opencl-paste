@@ -6,14 +6,7 @@
 
 namespace pv {
 
-SolverContext::SolverContext() :
-    context_(),
-    queue_(),
-    source_(),
-    target_(),
-    origin(),
-    region_source(),
-    region_target(),
+SimpleVCycle::SimpleVCycle() :
     program_(),
     jacobi(),
     calculate_residual(),
@@ -24,33 +17,16 @@ SolverContext::SolverContext() :
     add_images(),
     bilinear_interp(),
     bilinear_restrict(),
-    cl_source(),
-    cl_target(),
     b_stack(),
     x1_stack(),
     x2_stack(),
     residual_stack(),
-    current_grid_(),
-    pos_x(),
-    pos_y() {
-  origin.push_back(0);
-  origin.push_back(0);
-  origin.push_back(0);
-  region_source.push_back(0);
-  region_source.push_back(0);
-  region_source.push_back(1);
-  region_target.push_back(0);
-  region_target.push_back(0);
-  region_target.push_back(1);
+    current_grid_() {
 }
 
-void SolverContext::set_source(cv::Mat source, cv::Mat mask) {
-  source_ = pv::make_rgba(source, mask);
-  cv::flip(source_, source_, 0);
+void SimpleVCycle::set_source(cv::Mat source, cv::Mat mask) {
+  Solver::set_source(source, mask);
 
-  cl_source = cl::Image2D(context_, CL_MEM_READ_ONLY,
-                              cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
-                              size_t(source_.cols), size_t(source_.rows));
   b_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
                      cl::ImageFormat(CL_RGBA, CL_FLOAT),
                      size_t(source_.cols), size_t(source_.rows)));
@@ -64,43 +40,22 @@ void SolverContext::set_source(cv::Mat source, cv::Mat mask) {
                      cl::ImageFormat(CL_RGBA, X_CL_TYPE),
                      size_t(source_.cols), size_t(source_.rows)));
 
-  region_source[0] = size_t(source_.cols);
-  region_source[1] = size_t(source_.rows);
-  queue_.enqueueWriteImage(cl_source, CL_TRUE,
-                           origin, region_source, 0, 0,
-                           source_.data);
   launch_reset_image(false, residual_stack[0]);
   launch_reset_image(false, x1_stack[0]);
   launch_reset_image(false, x2_stack[0]);
-  launch_reset_image(true, b_stack[0]);
+  launch_reset_image(false, b_stack[0]);
 }
 
-void SolverContext::set_target(cv::Mat target) {
-  target_ = pv::make_rgba(target);
-  cv::flip(target_, target_, 0);
-
-  cl_target = cl::Image2D(context_, CL_MEM_READ_ONLY,
-                              cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
-                              size_t(target.cols), size_t(target.rows));
-  region_target[0] = size_t(target_.cols);
-  region_target[1] = size_t(target_.rows);
-  queue_.enqueueWriteImage(cl_target, CL_TRUE,
-                          origin, region_target, 0, 0,
-                          target_.data);
-
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  glOrtho(0, target_.cols, 0, target_.rows, 0.5, 100);
-  glMatrixMode(GL_MODELVIEW);
+void SimpleVCycle::set_target(cv::Mat target) {
+  Solver::set_target(target);
 
   setup_new_system(true);
   build_multigrid(true);
 }
 
-void SolverContext::init(cl::Context context,
-                         cl::CommandQueue queue) {
-  context_ = context;
-  queue_ = queue;
+void SimpleVCycle::init(cl::Context context,
+                        cl::CommandQueue queue) {
+  Solver::init(context, queue);
 
   program_ = pv::load_program(context_, "hellocl_kernels");
   try {
@@ -121,7 +76,7 @@ void SolverContext::init(cl::Context context,
   }
 }
 
-float SolverContext::get_residual_average() {
+float SimpleVCycle::get_residual_average() {
   size_t global_size = 1024;
   size_t local_size = 16;
   size_t nr_groups = global_size / local_size;
@@ -154,7 +109,7 @@ float SolverContext::get_residual_average() {
   // return result_host[0];
 }
 
-void SolverContext::jacobi_iterations(int iterations) {
+void SimpleVCycle::jacobi_iterations(int iterations) {
   size_t local_size = 8;
   size_t glob_width = x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>();
   size_t glob_height = x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>();
@@ -189,7 +144,7 @@ void SolverContext::jacobi_iterations(int iterations) {
   );
 }
 
-void SolverContext::v_cycle(double number_iterations) {
+void SimpleVCycle::v_cycle(double number_iterations) {
   if (current_grid_ == x1_stack.size() - 1) {
     return;
   }
@@ -199,12 +154,12 @@ void SolverContext::v_cycle(double number_iterations) {
   pop_residual_stack();
   jacobi_iterations(1);
 }
-void SolverContext::start_calculation_async(double number_iterations) {
+void SimpleVCycle::start_calculation_async(double number_iterations) {
   // Jacobi iterations
   v_cycle(number_iterations);
 }
 
-void SolverContext::push_residual_stack() {
+void SimpleVCycle::push_residual_stack() {
   ++current_grid_;
 
   bilinear_restrict.setArg<cl::Image2D>(0, residual_stack[current_grid_ - 1]);
@@ -221,7 +176,7 @@ void SolverContext::push_residual_stack() {
   launch_reset_image(false, x2_stack[current_grid_]);
 }
 
-void SolverContext::pop_residual_stack() {
+void SimpleVCycle::pop_residual_stack() {
   if (current_grid_ > 0) {
     --current_grid_;
 
@@ -249,7 +204,8 @@ void SolverContext::pop_residual_stack() {
     size.push_back(x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>());
     size.push_back(x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>());
     size.push_back(1);
-    queue_.enqueueCopyImage(x1_stack[current_grid_], cl_current_x1_copy, origin, origin, size);
+    queue_.enqueueCopyImage(x1_stack[current_grid_], cl_current_x1_copy,
+                            origin_, origin_, size);
 
     add_images.setArg<cl::Image2D>(0, cl_current_x1_copy);
     add_images.setArg<cl::Image2D>(1, cl_x1_copy);
@@ -265,7 +221,7 @@ void SolverContext::pop_residual_stack() {
   }
 }
 
-void SolverContext::build_multigrid(bool initialize) {
+void SimpleVCycle::build_multigrid(bool initialize) {
   size_t current_width = b_stack[0].getImageInfo<CL_IMAGE_WIDTH>();
   size_t current_height = b_stack[0].getImageInfo<CL_IMAGE_HEIGHT>();
   if (initialize) {
@@ -294,25 +250,31 @@ void SolverContext::build_multigrid(bool initialize) {
   }
 }
 
-void SolverContext::setup_new_system(bool initialize) {
-  setup_system.setArg<cl::Image2D>(0, cl_source);
-  setup_system.setArg<cl::Image2D>(1, cl_target);
+void SimpleVCycle::setup_new_system(bool initialize) {
+  setup_system.setArg<cl::Image2D>(0, cl_source_);
+  setup_system.setArg<cl::Image2D>(1, cl_target_);
   setup_system.setArg<cl::Image2D>(2, b_stack[0]);
   setup_system.setArg<cl::Image2D>(3, x1_stack[0]);
-  setup_system.setArg<cl_int>(4, pos_x);
-  setup_system.setArg<cl_int>(5, pos_y);
+  setup_system.setArg<cl_int>(4, pos_x_);
+  setup_system.setArg<cl_int>(5, pos_y_);
   setup_system.setArg<cl_int>(6, initialize);
 
   queue_.enqueueNDRangeKernel(
     setup_system,
     cl::NullRange,
-    cl::NDRange(cl_source.getImageInfo<CL_IMAGE_WIDTH>(),
-                cl_source.getImageInfo<CL_IMAGE_HEIGHT>()),
+    cl::NDRange(cl_source_.getImageInfo<CL_IMAGE_WIDTH>(),
+                cl_source_.getImageInfo<CL_IMAGE_HEIGHT>()),
     cl::NullRange
   );
 }
 
-void SolverContext::launch_reset_image(bool block, cl::Image2D image) {
+void SimpleVCycle::set_offset(int off_x, int off_y) {
+  Solver::set_offset(off_x, off_y);
+  setup_new_system(false);
+  build_multigrid(false);
+}
+
+void SimpleVCycle::launch_reset_image(bool block, cl::Image2D image) {
   cl::Event ev;
   reset_image.setArg<cl::Image2D>(0, image);
   queue_.enqueueNDRangeKernel(
@@ -326,18 +288,6 @@ void SolverContext::launch_reset_image(bool block, cl::Image2D image) {
   if (block) {
     ev.wait();
   }
-}
-
-void SolverContext::set_offset(int off_x, int off_y) {
-  pos_x = off_x;
-  pos_y = off_y;
-  setup_new_system(false);
-  build_multigrid(false);
-}
-
-void SolverContext::get_offset(int& off_x, int& off_y) {
-  off_x = pos_x;
-  off_y = pos_y;
 }
 
 }

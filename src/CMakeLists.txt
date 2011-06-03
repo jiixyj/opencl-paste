@@ -16,8 +16,10 @@ target_link_libraries(
   ${GLEW_LIBRARIES}
 )
 
+add_library(pv_solver solver)
+
 add_library(pv_context context)
-target_link_libraries(pv_context opencl_helper)
+target_link_libraries(pv_context pv_solver opencl_helper)
 
 add_library(pv_gl_context gl_context)
 target_link_libraries(pv_gl_context pv_context)

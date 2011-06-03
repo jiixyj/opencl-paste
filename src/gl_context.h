@@ -1,6 +1,8 @@
 #ifndef GL_CONTEXT_H_
 #define GL_CONTEXT_H_
 
+#include <memory>
+
 #include "context.h"
 
 namespace pv {
@@ -20,7 +22,7 @@ class GLContext {
   void unlock_gl();
 
   std::pair<int, int> get_gl_size();
-  SolverContext& solver();
+  Solver* solver();
   void toggle_residual_drawing();
 
  private:
@@ -31,7 +33,7 @@ class GLContext {
   cl::Kernel gpu_write_solution;
   cl::Kernel gpu_write_residual;
 
-  SolverContext solver_context_;
+  std::shared_ptr<Solver> solver_;
 
   GLuint g_texture;
   GLuint g_residual;

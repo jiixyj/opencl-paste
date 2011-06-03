@@ -11,7 +11,7 @@ GLContext::GLContext()
       gl_kernels_(),
       gpu_write_solution(),
       gpu_write_residual(),
-      solver_context_(),
+      solver_(new SimpleVCycle),
       g_texture(),
       g_residual(),
       g_target(),
@@ -38,7 +38,7 @@ void GLContext::init() {
   glLoadIdentity();
 
   pv::init_cl(gl_context_, queue_, true);
-  solver_context_.init(gl_context_, queue_);
+  solver_->init(gl_context_, queue_);
 
   gl_kernels_ = pv::load_program(gl_context_, "gl_kernels");
   gpu_write_solution = cl::Kernel(gl_kernels_, "gpu_write_solution", NULL);
@@ -52,7 +52,7 @@ void GLContext::set_source(cv::Mat source, cv::Mat mask) {
                               GL_TEXTURE_2D, 0, g_texture);
   cl_g_residual = cl::Image2DGL(gl_context_, CL_MEM_WRITE_ONLY,
                                 GL_TEXTURE_2D, 0, g_residual);
-  solver_context_.set_source(source, mask);
+  solver_->set_source(source, mask);
 }
 
 void GLContext::set_target(cv::Mat target) {
@@ -63,7 +63,7 @@ void GLContext::set_target(cv::Mat target) {
   target_width_ = target.cols;
   target_height_ = target.rows;
 
-  solver_context_.set_target(target);
+  solver_->set_target(target);
 }
 
 void GLContext::draw_frame() {
@@ -75,7 +75,7 @@ void GLContext::draw_frame() {
   int th = target_height_;
 
   int pos_x, pos_y;
-  solver_context_.get_offset(pos_x, pos_y);
+  solver_->get_offset(pos_x, pos_y);
 
   glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -116,8 +116,8 @@ std::pair<int, int> GLContext::get_gl_size() {
   return std::make_pair(target_width_, target_height_);
 }
 
-SolverContext& GLContext::solver() {
-  return solver_context_;
+Solver* GLContext::solver() {
+  return solver_.get();
 }
 
 void GLContext::toggle_residual_drawing() {
@@ -136,7 +136,7 @@ void GLContext::unlock_gl() {
 }
 
 void GLContext::prepare_images_for_drawing() {
-  gpu_write_solution.setArg<cl::Image2D>(0, solver_context_.current_solution());
+  gpu_write_solution.setArg<cl::Image2D>(0, solver_->current_solution());
   gpu_write_solution.setArg<cl::Image2D>(1, cl_g_render);
 
   queue_.enqueueNDRangeKernel(
@@ -148,7 +148,7 @@ void GLContext::prepare_images_for_drawing() {
     NULL, NULL
   );
 
-  gpu_write_residual.setArg<cl::Image2D>(0, solver_context_.current_residual());
+  gpu_write_residual.setArg<cl::Image2D>(0, solver_->current_residual());
   gpu_write_residual.setArg<cl::Image2D>(1, cl_g_residual);
 
   queue_.enqueueNDRangeKernel(

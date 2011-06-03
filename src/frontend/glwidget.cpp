@@ -47,8 +47,15 @@ void GLWidget::set_images() {
   std::string s = source;
   std::string m = mm;
   std::string t = target;
+  cv::Mat target_img = cv::imread(t);
   context_->set_source(cv::imread(s), cv::imread(m));
-  context_->set_target(cv::imread(t));
+  context_->set_target(target_img);
+
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  glOrtho(0, target_img.cols, 0, target_img.rows, 0.5, 100);
+  glMatrixMode(GL_MODELVIEW);
+
   std::pair<int, int> p = context_->get_gl_size();
   min_width = width = p.first;
   min_height = height = p.second;
@@ -63,10 +70,10 @@ void GLWidget::paintGL() {
   static int time_interval;
   static double fps;
 
-  float average = context_->solver().get_residual_average();
+  float average = context_->solver()->get_residual_average();
   context_->draw_frame();
   context_->lock_gl();
-  context_->solver().start_calculation_async(1);
+  context_->solver()->start_calculation_async(1);
   context_->prepare_images_for_drawing();
   context_->unlock_gl();
 
@@ -101,7 +108,7 @@ void GLWidget::mouseReleaseEvent(QMouseEvent* mevent) {
   switch (mevent->button()) {
     case Qt::LeftButton:
       button_pressed = false;
-      context_->solver().get_offset(old_pos_x, old_pos_y);
+      context_->solver()->get_offset(old_pos_x, old_pos_y);
       break;
     default:
       break;
@@ -110,7 +117,7 @@ void GLWidget::mouseReleaseEvent(QMouseEvent* mevent) {
 
 void GLWidget::mouseMoveEvent(QMouseEvent* mevent) {
   if (button_pressed) {
-    context_->solver().set_offset(old_pos_x + mevent->pos().x() - old_x,
+    context_->solver()->set_offset(old_pos_x + mevent->pos().x() - old_x,
                               old_pos_y + height - mevent->pos().y() - old_y);
   }
 }
