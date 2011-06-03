@@ -6,18 +6,14 @@
 
 namespace pv {
 
-Context::Context() :
+SolverContext::SolverContext() :
     context_(),
     queue_(),
-    main_loop_event_(),
     source_(),
     target_(),
     origin(),
     region_source(),
     region_target(),
-    g_texture(),
-    g_residual(),
-    g_target(),
     program_(),
     jacobi(),
     calculate_residual(),
@@ -31,16 +27,10 @@ Context::Context() :
     bilinear_restrict(),
     cl_source(),
     cl_target(),
-    a1_stack(),
-    a2_stack(),
-    a3_stack(),
     b_stack(),
     x1_stack(),
     x2_stack(),
     residual_stack(),
-    cl_g_render(),
-    cl_g_residual(),
-    draw_residual_(),
     current_grid_(),
     pos_x(),
     pos_y() {
@@ -55,37 +45,13 @@ Context::Context() :
   region_target.push_back(1);
 }
 
-void Context::set_source(cv::Mat source, cv::Mat mask) {
+void SolverContext::set_source(cv::Mat source, cv::Mat mask) {
   source_ = pv::make_rgba(source, mask);
   cv::flip(source_, source_, 0);
-
-  try {
-    g_texture = load_texture(cv::Mat(), source_.cols, source_.rows);
-    g_residual = load_texture(cv::Mat(), source_.cols, source_.rows);
-    cl_g_render = cl::Image2DGL(context_, CL_MEM_WRITE_ONLY,
-                                      GL_TEXTURE_2D, 0, g_texture);
-    cl_g_residual = cl::Image2DGL(context_, CL_MEM_WRITE_ONLY,
-                                          GL_TEXTURE_2D, 0, g_residual);
-  } catch (cl::Error error) {
-    std::cerr << "ERROR: "
-              << error.what()
-              << "(" << error.err() << ")"
-              << std::endl;
-    exit(EXIT_FAILURE);
-  }
 
   cl_source = cl::Image2D(context_, CL_MEM_READ_ONLY,
                               cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
                               size_t(source_.cols), size_t(source_.rows));
-  a1_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                     cl::ImageFormat(CL_RGBA, CL_FLOAT),
-                     size_t(source_.cols), size_t(source_.rows)));
-  a2_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                     cl::ImageFormat(CL_RGBA, CL_FLOAT),
-                     size_t(source_.cols), size_t(source_.rows)));
-  a3_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                     cl::ImageFormat(CL_RGBA, CL_FLOAT),
-                     size_t(source_.cols), size_t(source_.rows)));
   b_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
                      cl::ImageFormat(CL_RGBA, CL_FLOAT),
                      size_t(source_.cols), size_t(source_.rows)));
@@ -107,17 +73,12 @@ void Context::set_source(cv::Mat source, cv::Mat mask) {
   launch_reset_image(false, residual_stack[0]);
   launch_reset_image(false, x1_stack[0]);
   launch_reset_image(false, x2_stack[0]);
-  launch_reset_image(false, a1_stack[0]);
-  launch_reset_image(false, a2_stack[0]);
-  launch_reset_image(false, a3_stack[0]);
   launch_reset_image(true, b_stack[0]);
 }
 
-void Context::set_target(cv::Mat target) {
+void SolverContext::set_target(cv::Mat target) {
   target_ = pv::make_rgba(target);
   cv::flip(target_, target_, 0);
-
-  g_target = load_texture(target_);
 
   cl_target = cl::Image2D(context_, CL_MEM_READ_ONLY,
                               cl::ImageFormat(CL_RGBA, CL_UNSIGNED_INT8),
@@ -137,8 +98,10 @@ void Context::set_target(cv::Mat target) {
   build_multigrid(true);
 }
 
-void Context::init_cl() {
-  pv::init_cl(context_, queue_, true);
+void SolverContext::init(cl::Context context,
+                         cl::CommandQueue queue) {
+  context_ = context;
+  queue_ = queue;
 
   program_ = pv::load_program(context_, "hellocl_kernels");
   try {
@@ -160,72 +123,7 @@ void Context::init_cl() {
   }
 }
 
-void Context::init_gl() {
-  GLenum err = glewInit();
-  if (err != GLEW_OK) {
-    std::cerr << "Error: " << glewGetErrorString(err) << std::endl;
-    exit(EXIT_FAILURE);
-  }
-  std::cerr << "Status: Using GLEW "
-            << glewGetString(GLEW_VERSION) << std::endl;
-
-  glClearColor(0.0, 0.0, 0.0, 1.0);
-  glEnable(GL_BLEND);
-  glEnable(GL_DEPTH_TEST);
-  glLoadIdentity();
-}
-
-void Context::draw_frame() {
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-  int w = int(cl_g_render.getImageInfo<CL_IMAGE_WIDTH>());
-  int h = int(cl_g_render.getImageInfo<CL_IMAGE_HEIGHT>());
-  int tw = target_.cols;
-  int th = target_.rows;
-
-  glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-  glEnable(GL_TEXTURE_2D);
-  glBindTexture(GL_TEXTURE_2D, g_target);
-  glBegin(GL_QUADS);
-  glTexCoord2d(0.0, 0.0); glVertex3i( 0,  0, -10);
-  glTexCoord2d(1.0, 0.0); glVertex3i(tw,  0, -10);
-  glTexCoord2d(1.0, 1.0); glVertex3i(tw, th, -10);
-  glTexCoord2d(0.0, 1.0); glVertex3i( 0, th, -10);
-  glEnd();
-
-  glBindTexture(GL_TEXTURE_2D, g_texture);
-  glBegin(GL_QUADS);
-  glTexCoord2d(0.0, 0.0); glVertex3i(pos_x, pos_y, -9);
-  glTexCoord2d(1.0, 0.0); glVertex3i(pos_x + w, pos_y, -9);
-  glTexCoord2d(1.0, 1.0); glVertex3i(pos_x + w, pos_y + h, -9);
-  glTexCoord2d(0.0, 1.0); glVertex3i(pos_x, pos_y + h, -9);
-  glEnd();
-
-  if (draw_residual_) {
-    glBlendFunc(GL_ONE, GL_ONE);
-  } else {
-    glBlendFunc(GL_ZERO, GL_ONE);
-  }
-
-  glBindTexture(GL_TEXTURE_2D, g_residual);
-  glBegin(GL_QUADS);
-  glTexCoord2d(0.0, 0.0); glVertex3i(pos_x, pos_y, -8);
-  glTexCoord2d(1.0, 0.0); glVertex3i(pos_x + w, pos_y, -8);
-  glTexCoord2d(1.0, 1.0); glVertex3i(pos_x + w, pos_y + h, -8);
-  glTexCoord2d(0.0, 1.0); glVertex3i(pos_x, pos_y + h, -8);
-  glEnd();
-}
-
-void Context::wait_for_calculations() {
-  // Wait for kernel calculations from last frame to finish
-  try {
-    main_loop_event_.wait();
-  } catch (cl::Error err) { /* ignore */ }
-}
-
-float Context::get_residual_average() {
+float SolverContext::get_residual_average() {
   size_t global_size = 1024;
   size_t local_size = 16;
   size_t nr_groups = global_size / local_size;
@@ -258,11 +156,7 @@ float Context::get_residual_average() {
   // return result_host[0];
 }
 
-std::pair<int, int> Context::get_gl_size() {
-  return std::make_pair(target_.cols, target_.rows);
-}
-
-void Context::jacobi_iterations(int iterations) {
+void SolverContext::jacobi_iterations(int iterations) {
   size_t local_size = 8;
   size_t glob_width = x1_stack[current_grid_].getImageInfo<CL_IMAGE_WIDTH>();
   size_t glob_height = x1_stack[current_grid_].getImageInfo<CL_IMAGE_HEIGHT>();
@@ -274,11 +168,8 @@ void Context::jacobi_iterations(int iterations) {
     jacobi.setArg<cl::Image2D>(0, b_stack[current_grid_]);
     jacobi.setArg<cl::Image2D>(1, x1_stack[current_grid_]);
     jacobi.setArg<cl::Image2D>(2, x2_stack[current_grid_]);
-    jacobi.setArg<cl::Image2DGL>(3, cl_g_render);
-    jacobi.setArg(4, (local_size + 2) *
+    jacobi.setArg(3, (local_size + 2) *
                      (local_size + 2) * sizeof(cl_float4), NULL);
-    jacobi.setArg<int>(5, (i == iterations - 1) ?
-                            (current_grid_ == 0) : 0);
     queue_.enqueueNDRangeKernel(
       jacobi,
       cl::NullRange,
@@ -291,8 +182,6 @@ void Context::jacobi_iterations(int iterations) {
   calculate_residual.setArg<cl::Image2D>(0, b_stack[current_grid_]);
   calculate_residual.setArg<cl::Image2D>(1, x1_stack[current_grid_]);
   calculate_residual.setArg<cl::Image2D>(2, residual_stack[current_grid_]);
-  calculate_residual.setArg<cl::Image2DGL>(3, cl_g_residual);
-  calculate_residual.setArg<int>(4, current_grid_ == 0);
   queue_.enqueueNDRangeKernel(
     calculate_residual,
     cl::NullRange,
@@ -302,7 +191,7 @@ void Context::jacobi_iterations(int iterations) {
   );
 }
 
-void Context::v_cycle(double number_iterations) {
+void SolverContext::v_cycle(double number_iterations) {
   if (current_grid_ == x1_stack.size() - 1) {
     return;
   }
@@ -312,16 +201,12 @@ void Context::v_cycle(double number_iterations) {
   pop_residual_stack();
   jacobi_iterations(1);
 }
-void Context::start_calculation_async(double number_iterations) {
+void SolverContext::start_calculation_async(double number_iterations) {
   // Jacobi iterations
-  glFinish();
-  std::vector<cl::Memory> gl_image{cl_g_render, cl_g_residual};
-  queue_.enqueueAcquireGLObjects(&gl_image);
   v_cycle(number_iterations);
-  queue_.enqueueReleaseGLObjects(&gl_image, NULL, &main_loop_event_);
 }
 
-void Context::push_residual_stack() {
+void SolverContext::push_residual_stack() {
   ++current_grid_;
 
   bilinear_restrict.setArg<cl::Image2D>(0, residual_stack[current_grid_ - 1]);
@@ -338,7 +223,7 @@ void Context::push_residual_stack() {
   launch_reset_image(false, x2_stack[current_grid_]);
 }
 
-void Context::pop_residual_stack() {
+void SolverContext::pop_residual_stack() {
   if (current_grid_ > 0) {
     --current_grid_;
 
@@ -382,13 +267,10 @@ void Context::pop_residual_stack() {
   }
 }
 
-void Context::build_multigrid(bool initialize) {
-  size_t current_width = a1_stack[0].getImageInfo<CL_IMAGE_WIDTH>();
-  size_t current_height = a1_stack[0].getImageInfo<CL_IMAGE_HEIGHT>();
+void SolverContext::build_multigrid(bool initialize) {
+  size_t current_width = b_stack[0].getImageInfo<CL_IMAGE_WIDTH>();
+  size_t current_height = b_stack[0].getImageInfo<CL_IMAGE_HEIGHT>();
   if (initialize) {
-    a1_stack.resize(1);
-    a2_stack.resize(1);
-    a3_stack.resize(1);
     b_stack.resize(1);
     x1_stack.resize(1);
     x2_stack.resize(1);
@@ -399,37 +281,22 @@ void Context::build_multigrid(bool initialize) {
     current_height = (current_height + 1) / 2;
     if (initialize) {
       b_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                        cl::ImageFormat(CL_RGBA, CL_FLOAT),
-                        current_width, current_height));
+                                    cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                                    current_width, current_height));
       x1_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                         cl::ImageFormat(CL_RGBA, X_CL_TYPE),
-                         current_width, current_height));
+                                     cl::ImageFormat(CL_RGBA, X_CL_TYPE),
+                                     current_width, current_height));
       x2_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                         cl::ImageFormat(CL_RGBA, X_CL_TYPE),
-                         current_width, current_height));
+                                     cl::ImageFormat(CL_RGBA, X_CL_TYPE),
+                                     current_width, current_height));
       residual_stack.push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                               cl::ImageFormat(CL_RGBA, CL_FLOAT),
-                               current_width, current_height));
-    }
-    std::vector<cl::Image2D>* arr[3] = {&a1_stack, &a2_stack, &a3_stack};
-    for (int i = 0; i < 3; ++i) {
-      if (initialize) {
-        arr[i]->push_back(cl::Image2D(context_, CL_MEM_READ_WRITE,
-                          cl::ImageFormat(CL_RGBA, CL_FLOAT),
-                          current_width, current_height));
-      }
-      laplace_interp.setArg<cl::Image2D>(0, arr[i]->at(a1_stack.size() - 2));
-      laplace_interp.setArg<cl::Image2D>(1, arr[i]->back());
-      queue_.enqueueNDRangeKernel(laplace_interp, cl::NullRange,
-        cl::NDRange(arr[i]->back().getImageInfo<CL_IMAGE_WIDTH>(),
-                    arr[i]->back().getImageInfo<CL_IMAGE_HEIGHT>()),
-        cl::NullRange
-      );
+                                           cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                                           current_width, current_height));
     }
   }
 }
 
-void Context::setup_new_system(bool initialize) {
+void SolverContext::setup_new_system(bool initialize) {
   setup_system.setArg<cl::Image2D>(0, cl_source);
   setup_system.setArg<cl::Image2D>(1, cl_target);
   setup_system.setArg<cl::Image2D>(2, b_stack[0]);
@@ -447,7 +314,7 @@ void Context::setup_new_system(bool initialize) {
   );
 }
 
-void Context::launch_reset_image(bool block, cl::Image2D image) {
+void SolverContext::launch_reset_image(bool block, cl::Image2D image) {
   cl::Event ev;
   reset_image.setArg<cl::Image2D>(0, image);
   queue_.enqueueNDRangeKernel(
@@ -463,37 +330,16 @@ void Context::launch_reset_image(bool block, cl::Image2D image) {
   }
 }
 
-void Context::set_offset(int off_x, int off_y) {
+void SolverContext::set_offset(int off_x, int off_y) {
   pos_x = off_x;
   pos_y = off_y;
   setup_new_system(false);
   build_multigrid(false);
 }
 
-void Context::get_offset(int& off_x, int& off_y) {
+void SolverContext::get_offset(int& off_x, int& off_y) {
   off_x = pos_x;
   off_y = pos_y;
-}
-
-GLuint Context::load_texture(cv::Mat image, int width, int height) {
-  GLuint texture;
-
-  glGenTextures(1, &texture); //generate the texture with the loaded data
-  glBindTexture(GL_TEXTURE_2D, texture); //bind the texture to it’s array
-
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-               !image.empty() ? image.cols : width,
-               !image.empty() ? image.rows : height,
-               0, GL_RGBA, GL_UNSIGNED_BYTE,
-               !image.empty() ? image.data :
-                            std::vector<uint8_t>(width * height * 4, 0).data());
-
-  return texture;
 }
 
 }

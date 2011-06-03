@@ -4,7 +4,7 @@
 
 #include <highgui.h>
 
-GLWidget::GLWidget(QWidget* _parent, pv::Context* _context)
+GLWidget::GLWidget(QWidget* _parent, pv::GLContext* _context)
           : QGLWidget(_parent),
             context_(_context),
             width(),
@@ -35,8 +35,7 @@ QSize GLWidget::minimumSizeHint() const {
 }
 
 void GLWidget::initializeGL() {
-  context_->init_gl();
-  context_->init_cl();
+  context_->init();
   frame_time.start();
 }
 
@@ -60,32 +59,23 @@ void GLWidget::set_images() {
 }
 
 void GLWidget::paintGL() {
-  static double number_iterations = 10.0;
   static size_t frame_count = 0;
   static int time_interval;
   static double fps;
-  static double wanted_fps = 30.0;
 
-  context_->wait_for_calculations();
-  float average = context_->get_residual_average();
+  float average = context_->solver().get_residual_average();
   context_->draw_frame();
-  context_->start_calculation_async(number_iterations);
+  context_->lock_gl();
+  context_->solver().start_calculation_async(1);
+  context_->prepare_images_for_drawing();
+  context_->unlock_gl();
 
   frame_count++;
   time_interval = frame_time.elapsed();
   if (time_interval > 200) {
     fps = float(frame_count) / (float(time_interval) / 1000.0f);
     std::cerr << "FPS: " << fps << " "
-              << "iterations: " << number_iterations << " "
               << "avg: " << average << std::endl;
-    // if (average < 1e-8) exit(0);  // for benchmarking
-
-    if (fps >= wanted_fps) {
-      number_iterations += (fps - wanted_fps) / 2.0;
-    } else {
-      number_iterations -= (wanted_fps - fps) / 2.0;
-    }
-    if (number_iterations < 4) number_iterations = 4;
     frame_time.restart();
     frame_count = 0;
   }
@@ -111,7 +101,7 @@ void GLWidget::mouseReleaseEvent(QMouseEvent* mevent) {
   switch (mevent->button()) {
     case Qt::LeftButton:
       button_pressed = false;
-      context_->get_offset(old_pos_x, old_pos_y);
+      context_->solver().get_offset(old_pos_x, old_pos_y);
       break;
     default:
       break;
@@ -120,8 +110,8 @@ void GLWidget::mouseReleaseEvent(QMouseEvent* mevent) {
 
 void GLWidget::mouseMoveEvent(QMouseEvent* mevent) {
   if (button_pressed) {
-    context_->set_offset(old_pos_x + mevent->pos().x() - old_x,
-                         old_pos_y + height - mevent->pos().y() - old_y);
+    context_->solver().set_offset(old_pos_x + mevent->pos().x() - old_x,
+                              old_pos_y + height - mevent->pos().y() - old_y);
   }
 }
 
@@ -129,18 +119,6 @@ void GLWidget::keyPressEvent(QKeyEvent* kevent) {
   switch (kevent->key()) {
     case Qt::Key_R:
       context_->toggle_residual_drawing();
-      break;
-    case Qt::Key_P:
-      idle_timer.stop();
-      context_->wait_for_calculations();
-      context_->push_residual_stack();
-      idle_timer.start();
-      break;
-    case Qt::Key_O:
-      idle_timer.stop();
-      context_->wait_for_calculations();
-      context_->pop_residual_stack();
-      idle_timer.start();
       break;
     case Qt::Key_Q:
       std::exit(0);

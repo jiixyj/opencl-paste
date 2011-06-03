@@ -87,9 +87,7 @@ float laplace_c(float h) {
 kernel void jacobi(read_only image2d_t b,
                    read_only image2d_t x_in,
                    write_only image2d_t x_out,
-                   write_only image2d_t render,
-                   local float4* cache,
-                   int write_to_image) {
+                   local float4* cache) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
   float4 sigma = read_imagef(b, sampler, coord);
@@ -162,25 +160,18 @@ kernel void jacobi(read_only image2d_t b,
   }
 
   if (h && coord.x < image_dim.x && coord.y < image_dim.y) {
+    cache[lw*lc.y+lc.x].w = 255.0f;
 #ifdef FIX_BROKEN_IMAGE_WRITING
     write_imagef(x_out, coord * (int2)(2, 1), cache[lw*lc.y+lc.x]);
 #else
     write_imagef(x_out, coord, cache[lw*lc.y+lc.x]);
 #endif
-    if (write_to_image == 1) {
-      cache[lw * lc.y + lc.x].w = 255.0f;
-      write_imagef(render, coord, cache[lw*lc.y+lc.x] / 255.0f);
-    } else if (write_to_image == 2) {
-      write_imagef(render, coord, cache[lw*lc.y+lc.x] / 64.0f + 0.5f);
-    }
   }
 }
 
 kernel void calculate_residual(read_only image2d_t b,
                                read_only image2d_t x,
-                               write_only image2d_t res,
-                               write_only image2d_t gpu_abs,
-                               int write_to_image) {
+                               write_only image2d_t res) {
   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
   float4 sigma = read_imagef(b, sampler, coord);
@@ -202,9 +193,9 @@ kernel void calculate_residual(read_only image2d_t b,
 
   sigma -= m * read_imagef(x, sampler, coord);
   sigma.w = h;
-  if (write_to_image) {
-    write_imagef(gpu_abs, coord, sigma * sigma * 128.0f);
-  }
+  // if (write_to_image) {
+  //   write_imagef(gpu_abs, coord, sigma * sigma * 128.0f);
+  // }
 #ifdef FIX_BROKEN_IMAGE_WRITING
   coord.x = coord.x * 2;
 #endif

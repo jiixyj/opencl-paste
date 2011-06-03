@@ -3,7 +3,7 @@
 
 #include <QtGui>
 
-#include "context.h"
+#include "gl_context.h"
 
 class GLWidget;
 
@@ -17,7 +17,7 @@ class Window : public QWidget {
   void set_target(cv::Mat target);
 
  private:
-  pv::Context context_;
+  pv::GLContext context_;
   GLWidget* gl_widget_;
 
   // don't copy

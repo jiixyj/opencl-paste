@@ -1,14 +1,14 @@
 #ifndef GLWIDGET_H
 #define GLWIDGET_H
 
-#include "context.h"
+#include "gl_context.h"
 #include <QtOpenGL>
 
 class GLWidget : public QGLWidget {
   Q_OBJECT
 
  public:
-  GLWidget(QWidget *parent, pv::Context* _context);
+  GLWidget(QWidget *parent, pv::GLContext* _context);
   ~GLWidget();
   QSize sizeHint() const;
   QSize minimumSizeHint() const;
@@ -16,7 +16,7 @@ class GLWidget : public QGLWidget {
   void set_images();
 
  protected:
-  pv::Context* context_;
+  pv::GLContext* context_;
 
   int width, height, min_width, min_height;
 
