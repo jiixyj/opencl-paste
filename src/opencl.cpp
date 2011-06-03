@@ -123,7 +123,7 @@ cv::Mat make_rgba(const cv::Mat& image, cv::Mat alpha) {
   static int fromto[] = {0, 2,  1, 1,  2, 0,  3, 3};
   cv::Mat with_alpha(image.size(), CV_8UC4);
   std::array<cv::Mat, 2> images{{image, alpha}};
-  cv::mixChannels(images.data(), images.size(), &with_alpha, 1, fromto, 4);
+  cv::mixChannels(images.data(), int(images.size()), &with_alpha, 1, fromto, 4);
   return with_alpha;
 }
 
