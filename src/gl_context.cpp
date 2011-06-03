@@ -116,6 +116,25 @@ std::pair<int, int> GLContext::get_gl_size() {
   return std::make_pair(target_width_, target_height_);
 }
 
+SolverContext& GLContext::solver() {
+  return solver_context_;
+}
+
+void GLContext::toggle_residual_drawing() {
+  draw_residual_ = !draw_residual_;
+}
+
+void GLContext::lock_gl() {
+  glFinish();
+  std::vector<cl::Memory> gl_image{cl_g_render, cl_g_residual};
+  queue_.enqueueAcquireGLObjects(&gl_image);
+}
+
+void GLContext::unlock_gl() {
+  std::vector<cl::Memory> gl_image{cl_g_render, cl_g_residual};
+  queue_.enqueueReleaseGLObjects(&gl_image);
+}
+
 void GLContext::prepare_images_for_drawing() {
   gpu_write_solution.setArg<cl::Image2D>(0, solver_context_.current_solution());
   gpu_write_solution.setArg<cl::Image2D>(1, cl_g_render);

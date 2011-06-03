@@ -15,21 +15,13 @@ class GLContext {
   void set_target(cv::Mat target);
 
   void draw_frame();
-  std::pair<int, int> get_gl_size();
-
-  SolverContext& solver() { return solver_context_; }
-  void toggle_residual_drawing() { draw_residual_ = !draw_residual_; }
-
-  void lock_gl() {
-    glFinish();
-    std::vector<cl::Memory> gl_image{cl_g_render, cl_g_residual};
-    queue_.enqueueAcquireGLObjects(&gl_image);
-  }
-  void unlock_gl() {
-    std::vector<cl::Memory> gl_image{cl_g_render, cl_g_residual};
-    queue_.enqueueReleaseGLObjects(&gl_image);
-  }
+  void lock_gl();
   void prepare_images_for_drawing();
+  void unlock_gl();
+
+  std::pair<int, int> get_gl_size();
+  SolverContext& solver();
+  void toggle_residual_drawing();
 
  private:
   cl::Context gl_context_;
