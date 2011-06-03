@@ -2,7 +2,9 @@ project(OpenCL)
 cmake_minimum_required(VERSION 2.6.4)
 set(CMAKE_MODULE_PATH ${OpenCL_SOURCE_DIR}/cmake)
 set(EXECUTABLE_OUTPUT_PATH ${OpenCL_BINARY_DIR})
+
 include_directories(SYSTEM include)
+include_directories(SYSTEM src)
 
 ##### GLEW
 include(FindPkgConfig)

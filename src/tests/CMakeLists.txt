@@ -1,0 +1,2 @@
+add_executable(test_subsample test_subsample)
+target_link_libraries(test_subsample opencl_helper)
